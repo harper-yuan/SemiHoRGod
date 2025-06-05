@@ -1,0 +1,46 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/harper/Desktop/SE/harper_code/5PC/test/offline.cpp
+NTL/ZZ_p.h
+-
+NTL/ZZ_pE.h
+-
+emp-tool/emp-tool.h
+-
+io/netmp.h
+-
+HoRGod/helpers.h
+-
+HoRGod/offline_evaluator.h
+-
+HoRGod/ot_provider.h
+-
+HoRGod/rand_gen_pool.h
+-
+utils/circuit.h
+-
+algorithm
+-
+boost/algorithm/hex.hpp
+-
+boost/test/data/monomorphic.hpp
+-
+boost/test/data/test_case.hpp
+-
+boost/test/included/unit_test.hpp
+-
+future
+-
+memory
+-
+random
+-
+vector
+-
+

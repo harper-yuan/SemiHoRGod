@@ -1,0 +1,1 @@
+/usr/bin/c++  -g  -rdynamic CMakeFiles/utils_test.dir/utils.o  -o tests/utils_test  -lBoost::unit_test_framework -lThreads::Threads -lHoRGod 

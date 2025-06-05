@@ -1,0 +1,20 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/harper/Desktop/SE/harper_code/5PC/test/io.cpp
+io/netmp.h
+-
+boost/test/included/unit_test.hpp
+-
+future
+-
+random
+-
+vector
+-
+

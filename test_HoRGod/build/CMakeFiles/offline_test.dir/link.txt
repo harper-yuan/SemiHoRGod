@@ -1,0 +1,1 @@
+/usr/bin/c++  -g  -rdynamic CMakeFiles/offline_test.dir/offline.o  -o tests/offline_test  -lBoost::unit_test_framework -lThreads::Threads -lHoRGod -lNTL -lGMP 
