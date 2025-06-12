@@ -21,9 +21,7 @@ class JumpProvider {
 
  public:
   explicit JumpProvider(int my_id);
-
   void reset();
-
   void jumpUpdate(int sender1, int sender2, int receiver, size_t nbytes,
                   const void* data = nullptr);
   void communicate(io::NetIOMP<4>& network, ThreadPool& tpool);

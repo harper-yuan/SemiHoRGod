@@ -123,7 +123,7 @@ struct DummyShare {
     }
     share_elements[4] = secret - sum; //最后一个共享的值
   }
-
+  
   void randomize(emp::PRG& prg) {
     prg.random_data(share_elements.data(), sizeof(R) * 5); //随机化5个值
   }

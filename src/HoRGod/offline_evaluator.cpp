@@ -1028,89 +1028,56 @@ PreprocCircuit<Ring> OfflineEvaluator::dummy(
         }
 
         case utils::GateType::kRelu: {
-          const auto* relu_g = static_cast<utils::FIn1Gate*>(gate.get());
-          auto alpha = -1 * wires[relu_g->in].secret();
-          auto alpha_bits = bitDecompose(alpha);
+          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+          wires[cmp_g->out].randomize(prg); //随机化输出值的α
 
-          DummyShare<BoolRing> zero_share;
-          std::fill(zero_share.share_elements.begin(),
-                    zero_share.share_elements.end(), 0);
+          DummyShare<Ring> mask_mu_1; //随机化mu_1
+          mask_mu_1.randomize(prg);
+          Ring prod = wires[cmp_g->in].secret() * mask_mu_1.secret(); //直接把关键的prod=(Σα1) x (Σα2)明文计算出来
 
-          std::vector<preprocg_ptr_t<BoolRing>> msb_gates(msb_circ.num_gates);
-          std::vector<DummyShare<BoolRing>> msb_wires(msb_circ.num_gates);
+          DummyShare<Ring> mask_mu_2; //随机化mu_2
+          mask_mu_2.randomize(prg);
 
-          size_t inp_counter = 0;
-          for (const auto& msb_level : msb_circ.gates_by_level) {
-            for (const auto& msb_gate : msb_level) {
-              switch (msb_gate->type) {
-                case utils::GateType::kInp: {
-                  auto mask = zero_share;
-                  if (inp_counter < 64) {
-                    mask = DummyShare<BoolRing>(alpha_bits[inp_counter], prg);
-                  }
-                  msb_wires[msb_gate->out] = mask;
-                  msb_gates[msb_gate->out] =
-                      std::make_unique<PreprocGate<BoolRing>>(mask.getRSS(pid));
-                  inp_counter++;
-                  break;
-                }
+          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
 
-                case utils::GateType::kAdd: {
-                  const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
-                  msb_wires[g->out] = msb_wires[g->in1] + msb_wires[g->in2];
-                  msb_gates[g->out] = std::make_unique<PreprocGate<BoolRing>>(
-                      msb_wires[g->out].getRSS(pid));
-                  break;
-                }
+          DummyShare<Ring> prev_mask(wires[gate->out]);
+          wires[gate->out] +=  mask_mu_2;  //alpha提前加好，后续不用加了
+          
+          DummyShare<Ring> mask_for_mul; //随机化mu_2
+          mask_for_mul.randomize(prg);
 
-                case utils::GateType::kMul: {
-                  const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
-                  msb_wires[g->out].randomize(prg);
-                  BoolRing prod =
-                      msb_wires[g->in1].secret() * msb_wires[g->in2].secret();
-                  auto prod_share = DummyShare<BoolRing>(prod, prg);
-
-                  msb_gates[g->out] =
-                      std::make_unique<PreprocMultGate<BoolRing>>(
-                          msb_wires[g->out].getRSS(pid),
-                          prod_share.getRSS(pid));
-                  break;
-                }
-
-                default: {
-                  break;
-                }
-              }
-            }
-          }
-
-          const auto& out_mask = msb_wires[msb_circ.outputs[0]];
-
-          Ring alpha_msb = out_mask.secret().val();
-          DummyShare<Ring> mask_msb(alpha_msb, prg);
-
-          DummyShare<Ring> mask_w;
-          mask_w.randomize(prg);
-
-          Ring alpha_w, alpha_btoa, alpha_binj;
-          alpha_w = mask_w.secret();
-
-          alpha_btoa = -alpha_msb - 2 * alpha_w;
-          DummyShare<Ring> mask_btoa(alpha_btoa, prg);
-
-          alpha_binj = wires[relu_g->in].secret() * alpha_btoa;
-          DummyShare<Ring> mask_binj(alpha_binj, prg);
-
-          wires[relu_g->out].randomize(prg);
-
-          preproc.gates[relu_g->out] = std::make_unique<PreprocReluGate<Ring>>(
-              wires[relu_g->out].getRSS(pid), std::move(msb_gates),
-              mask_msb.getRSS(pid), mask_w.getRSS(pid), mask_btoa.getRSS(pid),
-              mask_binj.getRSS(pid));
+          //前面做了一次乘法，得到的结果是(x-y)大于0或者小于0，分别代表1和0，这里再做一次乘法，输入(x-y)，则输出relu的结果
+          Ring prod2 = wires[gate->out].secret() * wires[cmp_g->in].secret(); //(x-y)和比较结果z的α做乘法
+          preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
+              wires[gate->out].getRSS(pid), DummyShare<Ring>(prod, prg).getRSS(pid),
+              mask_mu_1.getRSS(pid), mask_mu_2.getRSS(pid), beta_mu_1, beta_mu_2, prev_mask.getRSS(pid), DummyShare<Ring>(prod2, prg).getRSS(pid), mask_for_mul.getRSS(pid)); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
           break;
         }
 
-        
+        case utils::GateType::kCmp: {
+          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
+          wires[cmp_g->out].randomize(prg); //随机化输出值的α
+
+          DummyShare<Ring> mask_mu_1; //随机化mu_1
+          mask_mu_1.randomize(prg);
+          Ring prod = wires[cmp_g->in].secret() * mask_mu_1.secret(); //直接把关键的prod=(Σα1) x (Σα2)明文计算出来
+
+          DummyShare<Ring> mask_mu_2; //随机化mu_2
+          mask_mu_2.randomize(prg);
+
+          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
+          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
+
+          DummyShare<Ring> prev_mask(wires[gate->out]);
+          wires[gate->out] +=  mask_mu_2;  //alpha提前加好，后续不用加了
+          //除此之外，还有一个重要的操作，如果(x-y)>0，那么最终需要的α已经有了，但是β无法计算，所以我们需要预先计算好最终结果的β，否则计算不了。
+
+          preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(
+              wires[gate->out].getRSS(pid), DummyShare<Ring>(prod, prg).getRSS(pid),
+              mask_mu_1.getRSS(pid), mask_mu_2.getRSS(pid), beta_mu_1, beta_mu_2, prev_mask.getRSS(pid)); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+          break;
+        }
 
         default: {
           throw std::runtime_error("Invalid gate.");

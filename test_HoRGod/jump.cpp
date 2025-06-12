@@ -22,7 +22,7 @@ BOOST_AUTO_TEST_CASE(receiver_offset_2) {
     parties.push_back(std::async(std::launch::async, [&, i]() {
       io::NetIOMP<4> network(i, 10000, nullptr, true);
       JumpProvider jump(i);
-      ThreadPool tpool(1);
+      ThreadPool tpool(4);
 
       jump.jumpUpdate(1, 2, 3, input.size(), input.data());
       jump.communicate(network, tpool);
@@ -99,10 +99,11 @@ BOOST_AUTO_TEST_CASE(receiver_offset_3) {
 BOOST_AUTO_TEST_CASE(all_combinations) {
   std::string message("A test string.");
   std::vector<uint8_t> input(message.begin(), message.end());
-
+  
   std::vector<std::future<void>> parties;
   for (int i = 0; i < 4; ++i) {
     parties.push_back(std::async(std::launch::async, [&, i]() {
+    // parties.push_back(tpool.enqueue([&]() {
       io::NetIOMP<4> network(i, 10000, nullptr, true);
       JumpProvider jump(i);
       ThreadPool tpool(1);

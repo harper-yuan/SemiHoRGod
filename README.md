@@ -98,6 +98,8 @@ ctest
 ./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 -t 1>/dev/null &
 ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10 -t 1
 gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10 -t 1
+
+
 # All other benchmark programs have similar options and behaviour. The '-h'
 # option can be used for detailed usage information.
 
@@ -120,4 +122,17 @@ gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10 -t 1
 
 # observe the thread tree
 pstree -pul PID
+
+./benchmarks/online_mpc -p 0 --localhost -g 100 -d 10 >/dev/null &
+./benchmarks/online_mpc -p 1 --localhost -g 100 -d 10 >/dev/null &
+./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 >/dev/null &
+./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 >/dev/null &
+./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
+gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
+
+./benchmarks/online_mpc -p 0 --localhost -g 100 -d 10 >/dev/null &
+./benchmarks/online_mpc -p 1 --localhost -g 100 -d 10 >/dev/null &
+./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 >/dev/null &
+./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 >/dev/null &
+valgrind --log-file=valgrind_p4.log ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
 ```

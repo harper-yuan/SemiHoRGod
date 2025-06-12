@@ -46,6 +46,55 @@ struct PreprocMultGate : public PreprocGate<R> {
 };
 
 template <class R>
+struct PreprocCmpGate : public PreprocGate<R> {
+  // Secret shared product of inputs masks.
+  ReplicatedShare<R> mask_prod{};
+  ReplicatedShare<R> mask_mu_1{};
+  ReplicatedShare<R> mask_mu_2{};
+  R beta_mu_1;
+  R beta_mu_2;
+  ReplicatedShare<R> prev_mask{}; 
+  //比较运算比较特殊，涉及到多个门，通常来说α要在离线提前计算完成，但是Cmp需要一个乘法和一个const 加法，乘法的中间变量的alpha是需要用的，所以需要保存下来用来计算乘法
+  PreprocCmpGate() = default;
+  PreprocCmpGate(const ReplicatedShare<R>& mask,
+                  const ReplicatedShare<R>& mask_prod,
+                  const ReplicatedShare<R>& mask_mu_1,
+                  const ReplicatedShare<R>& mask_mu_2,
+                  const Ring beta_mu_1,
+                  const Ring beta_mu_2,
+                  const ReplicatedShare<R>& prev_mask)
+      : PreprocGate<R>(mask), mask_prod(mask_prod), 
+      mask_mu_1(mask_mu_1), mask_mu_2(mask_mu_2), beta_mu_1(beta_mu_1), beta_mu_2(beta_mu_2), prev_mask(prev_mask) {}
+};
+
+template <class R>
+struct PreprocReluGate : public PreprocGate<R> {
+  // Secret shared product of inputs masks.
+  ReplicatedShare<R> mask_prod{};
+  ReplicatedShare<R> mask_mu_1{};
+  ReplicatedShare<R> mask_mu_2{};
+  R beta_mu_1;
+  R beta_mu_2;
+  ReplicatedShare<R> prev_mask{}; //如果比较结果大于0，那么直接返回原始值，所以这里需要保存一个输入mask
+  ReplicatedShare<R> mask_prod2{};
+  ReplicatedShare<R> mask_for_mul{};
+  PreprocReluGate() = default;
+  PreprocReluGate(const ReplicatedShare<R>& mask,
+                  const ReplicatedShare<R>& mask_prod,
+                  const ReplicatedShare<R>& mask_mu_1,
+                  const ReplicatedShare<R>& mask_mu_2,
+                  const Ring beta_mu_1,
+                  const Ring beta_mu_2,
+                  const ReplicatedShare<R>& prev_mask,
+                  const ReplicatedShare<R>& mask_prod2,
+                  const ReplicatedShare<R>& mask_for_mul)
+      : PreprocGate<R>(mask), mask_prod(mask_prod), 
+      mask_mu_1(mask_mu_1), mask_mu_2(mask_mu_2), beta_mu_1(beta_mu_1), 
+      beta_mu_2(beta_mu_2), prev_mask(prev_mask), mask_prod2(mask_prod2),
+      mask_for_mul(mask_for_mul) {}
+};
+
+template <class R>
 struct PreprocDotpGate : public PreprocGate<R> {
   ReplicatedShare<Ring> mask_prod{};
 
@@ -68,27 +117,6 @@ struct PreprocTrDotpGate : public PreprocGate<R> {
 };
 
 template <class R>
-struct PreprocReluGate : public PreprocGate<R> {
-  std::vector<preprocg_ptr_t<BoolRing>> msb_gates;
-  ReplicatedShare<R> mask_msb;
-  ReplicatedShare<R> mask_w;
-  ReplicatedShare<R> mask_btoa;
-  ReplicatedShare<R> mask_binj;
-
-  PreprocReluGate() = default;
-  PreprocReluGate(ReplicatedShare<R> mask,
-                  std::vector<preprocg_ptr_t<BoolRing>> msb_gates,
-                  ReplicatedShare<R> mask_msb, ReplicatedShare<R> mask_w,
-                  ReplicatedShare<R> mask_btoa, ReplicatedShare<R> mask_binj)
-      : PreprocGate<R>(mask),
-        msb_gates(std::move(msb_gates)),
-        mask_msb(mask_msb),
-        mask_w(mask_w),
-        mask_btoa(mask_btoa),
-        mask_binj(mask_binj) {}
-};
-
-template <class R>
 struct PreprocMsbGate : public PreprocGate<R> {
   std::vector<preprocg_ptr_t<BoolRing>> msb_gates;
   ReplicatedShare<R> mask_msb;
@@ -103,6 +131,7 @@ struct PreprocMsbGate : public PreprocGate<R> {
         mask_msb(mask_msb),
         mask_w(mask_w) {}
 };
+
 
 // Preprocessed data for output wires.
 struct PreprocOutput {

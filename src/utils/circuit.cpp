@@ -50,6 +50,10 @@ std::ostream& operator<<(std::ostream& os, GateType type) {
       os << "MSB";
       break;
 
+    case kCmp:
+      os << "Compare";
+      break;
+
     case kDotprod:
       os << "Dotproduct";
       break;

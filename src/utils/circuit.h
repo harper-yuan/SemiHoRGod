@@ -28,6 +28,7 @@ enum GateType {
   kConstMul, //标量乘
   kRelu, //relu
   kMsb, //大小比较
+  kCmp, //基于a(x-y)+b的大小比较
   kDotprod, //点
   kTrdotp,  
   kInvalid,
@@ -167,7 +168,7 @@ class Circuit {
 
   // Function to add a single input gate.
   wire_t addGate(GateType type, wire_t input) {
-    if (type != GateType::kRelu && type != GateType::kMsb) {
+    if (type != GateType::kRelu && type != GateType::kMsb && type != GateType::kCmp) {
       throw std::invalid_argument("Invalid gate type.");
     }
 
@@ -246,6 +247,12 @@ class Circuit {
         }
 
         case GateType::kMsb: {
+          const auto* g = static_cast<FIn1Gate*>(gate.get());
+          gate_level[g->out] = gate_level[g->in] + 1;
+          break;
+        }
+
+        case GateType::kCmp: {
           const auto* g = static_cast<FIn1Gate*>(gate.get());
           gate_level[g->out] = gate_level[g->in] + 1;
           break;
@@ -342,7 +349,7 @@ class Circuit {
               auto* g = static_cast<FIn1Gate*>(gate.get());
               std::vector<BoolRing> bin = bitDecompose(wires[g->in]);
 
-              if (bin[63].val()) //如果最高位为1，那么为负数，直接返回0
+              if (bin[BITS_GAMMA-1].val()) //如果最高位为1，那么为负数，直接返回0
                 wires[g->out] = 0;
               else  //如果最高位为0，那么为正数数，直接返回原始值
                 wires[g->out] = wires[g->in];
@@ -358,6 +365,23 @@ class Circuit {
             } else {
               std::vector<BoolRing> bin = bitDecompose(wires[g->in]);
               wires[g->out] = bin[63].val(); //直接看最高位是正还是负
+            }
+            break;
+          }
+
+          case GateType::kCmp: {
+            auto* g = static_cast<FIn1Gate*>(gate.get());
+
+            if constexpr (std::is_same_v<R, BoolRing>) { //如果R是bool 环，直接返回输入即可
+              wires[g->out] = wires[g->in];
+            } else {
+              std::vector<BoolRing> bin = bitDecompose(wires[g->in]);
+              if (bin[BITS_GAMMA-1].val()) { //最高位是1，那么是负数
+                wires[g->out] = CMP_lESS_RESULT;
+              }
+              else {
+                wires[g->out] = CMP_GREATER_RESULT;
+              }
             }
             break;
           }

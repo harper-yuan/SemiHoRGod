@@ -2,6 +2,7 @@
 #include <NTL/ZZ_pX.h>
 #include <cmath>
 
+
 namespace HoRGod {
 int pidFromOffset_N(int id, int offset, int Np) { //通过进程号pid+offset识别其编号i ∈ {1,2,3,4}
   int pid = (id + offset) % Np;
@@ -157,5 +158,29 @@ void sendZZpE(emp::NetIO* ios, const NTL::ZZ_pE* data, size_t length) {
     }
   }
   ios->flush();
+}
+
+Ring generate_specific_bit_random(emp::PRG& prg, uint32_t a) {
+  if (a == 0 || a > 64) {
+      throw std::invalid_argument("a must be between 1 and 64");
+  }
+
+  // 计算需要的随机字节数（向上取整）
+  const uint32_t num_bytes = (a + 7) / 8; 
+  uint8_t random_bytes[16] = {0}; // 初始化为0，确保未使用的字节为0
+
+  // 生成随机字节（最多8字节）
+  prg.random_data(random_bytes, num_bytes);
+
+  // 将字节拷贝到uint64_t（小端序处理）
+  Ring result = 0;
+  memcpy(&result, random_bytes, num_bytes);
+
+  // 屏蔽超出a比特的高位（重要！）
+  if (a < 64) {
+      const uint64_t mask = (1ULL << a) - 1;
+      result &= mask;
+  }
+  return result;
 }
 };  // namespace HoRGod

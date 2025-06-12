@@ -96,6 +96,7 @@ void benchmark(const bpo::variables_map& opts) {
   emp::PRG prg(&emp::zero_block, seed);
 
   for (size_t r = 0; r < repeat; ++r) {
+    std::cout << "--- Repetition " << r + 1 << " ---\n";
     auto preproc =
         OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
 
@@ -104,13 +105,14 @@ void benchmark(const bpo::variables_map& opts) {
 
     network->sync();
 
+    std::cout << "Start evaluating " << "\n";
     eval.setRandomInputs();
     StatsPoint start(*network);
     for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
       eval.evaluateGatesAtDepth(i);
     }
     StatsPoint end(*network);
-
+    std::cout << "End evaluating " << "\n";
     auto rbench = end - start;
     output_data["benchmarks"].push_back(rbench);
 
@@ -119,18 +121,20 @@ void benchmark(const bpo::variables_map& opts) {
       bytes_sent += val.get<int64_t>();
     }
 
-    std::cout << "--- Repetition " << r + 1 << " ---\n";
+    
     std::cout << "time: " << rbench["time"] << " ms\n";
     std::cout << "sent: " << bytes_sent << " bytes\n";
-
+    std::cout << "If save the output: " << save_output << "\n";
     if (save_output) {
       saveJson(output_data, save_file);
     }
     std::cout << std::endl;
   }
-
+  std::cout << "Following is the memory: " << "\n";
   output_data["stats"] = {{"peak_virtual_memory", peakVirtualMemory()},
                           {"peak_resident_set_size", peakResidentSetSize()}};
+  // output_data["stats"] = {{"peak_virtual_memory", 1},
+  //                         {"peak_resident_set_size", 1}};
 
   std::cout << "--- Statistics ---\n";
   for (const auto& [key, value] : output_data["stats"].items()) {
