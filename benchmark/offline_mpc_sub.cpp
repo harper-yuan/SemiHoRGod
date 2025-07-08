@@ -82,7 +82,7 @@ void benchmark(const bpo::variables_map& opts) {
     fnet >> netdata;
     fnet.close();
 
-    std::vector<std::string> ipaddress(4);
+    std::vector<std::string> ipaddress(5);
     std::array<char*, 5> ip{};
     for (size_t i = 0; i < 5; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
@@ -134,10 +134,10 @@ void benchmark(const bpo::variables_map& opts) {
     nlohmann::json rbench;
 
     BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
-    BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
-    BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);
-    BENCHMARK(rbench, "c_terms", eval.computeCCrossTerms);
-    BENCHMARK(rbench, "combine_cross_terms", eval.combineCrossTerms);
+    // BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
+    // BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);
+    // BENCHMARK(rbench, "c_terms", eval.computeCCrossTerms);
+    // BENCHMARK(rbench, "combine_cross_terms", eval.combineCrossTerms);
 
     std::cout << "--- Repetition " << r + 1 << " ---\n";
     for (const auto& [key, value] : rbench.items()) {

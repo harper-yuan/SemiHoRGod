@@ -2,10 +2,8 @@
 
 #include <emp-ot/emp-ot.h>
 #include <emp-tool/emp-tool.h>
-
 #include <array>
 #include <vector>
-
 #include "types.h"
 
 namespace HoRGod {

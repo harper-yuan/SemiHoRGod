@@ -42,8 +42,6 @@ int pidFromOffset(int id, int offset) { //通过进程号pid+offset识别其编�
   return pid;
 }
 
-
-
 int idxFromSenderAndReceiver(int sender_id, int receiver_id) { //确定reciever所需数据，在sender所拥有的数组中的索引
   //假如sender_id = 4, vector = {0,1,2,3},索引就是receiver_id
   if (sender_id > receiver_id) {

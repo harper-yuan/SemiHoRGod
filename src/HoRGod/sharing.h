@@ -40,6 +40,32 @@ class ReplicatedShare {
     return values_.at(idx);
   }
 
+  std::array<R, 3> commonTreeValues(int my_id, int pid) {
+    std::array<R, 5> values_temp;
+    int pos = 0;
+    //先假装有5个秘密共享，实际上只有4个
+    for (int i = 0; i < 5; ++i) {
+        if (i == my_id) {
+          values_temp[i] = 0;
+        }
+        else {
+          values_temp[i] = values_.at(pos);
+          pos++;
+        }
+    }
+
+    //拿着5个秘密共享，看my_id和pid共有的是哪三个
+    std::array<R, 3> result;
+    pos = 0;
+    for (int i = 0; i < 5; ++i) {
+        if (i != my_id && i != pid) {
+            result[pos++] = values_temp.at(i);
+        }
+    }
+    return result;
+  }
+
+
   [[nodiscard]] R commonValueWithParty(int my_id, int pid) const {
     int idx = pid - my_id;
     if (idx < 0) {

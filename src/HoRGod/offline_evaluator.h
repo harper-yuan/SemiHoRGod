@@ -107,6 +107,11 @@ class OfflineEvaluator {
   PreprocCircuit<Ring> run(
       const std::unordered_map<utils::wire_t, int>& input_pid_map);
 
+  // secure preprocessing
+  static PreprocCircuit<Ring> offline_setwire(
+      const utils::LevelOrderedCircuit& circ,
+      const std::unordered_map<utils::wire_t, int>& input_pid_map,
+      size_t security_param, int pid, emp::PRG& prg);
   // Insecure preprocessing. All preprocessing data is generated in clear but
   // cast in a form that can be used in the online phase.
   static PreprocCircuit<Ring> dummy(
