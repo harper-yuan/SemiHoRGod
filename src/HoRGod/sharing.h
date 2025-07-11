@@ -24,6 +24,11 @@ class ReplicatedShare {
     prg.random_data(values_.data(), sizeof(R) * 4);
   }
 
+  void init_zero() {
+    for(int i = 0;i<4;i++) {
+      values_[i] = 0;
+    }
+  }
   // Access share elements.
   // idx = i retreives value common with party having my_id + i + 1.
   R& operator[](size_t idx) { return values_.at(idx); }
@@ -79,12 +84,22 @@ class ReplicatedShare {
   [[nodiscard]] R sum() const { return values_[0] + values_[1] + values_[2] + values_[3]; }
 
   // Arithmetic operators.
-  ReplicatedShare<R>& operator+=(const ReplicatedShare<R>& rhs) {
+  ReplicatedShare<R>& operator+=(const ReplicatedShare<R> rhs) {
     values_[0] += rhs.values_[0];
     values_[1] += rhs.values_[1];
     values_[2] += rhs.values_[2];
     values_[3] += rhs.values_[3];
     return *this;
+  }
+
+  
+  ReplicatedShare<R> cosnt_add(const R& rhs) const {
+    ReplicatedShare<R> result = *this;  // 复制当前对象
+    result.values_[0] += rhs;           // 每个元素加常量
+    result.values_[1] += rhs;
+    result.values_[2] += rhs;
+    result.values_[3] += rhs;
+    return result;                      // 返回新对象
   }
 
   friend ReplicatedShare<R> operator+(ReplicatedShare<R> lhs,

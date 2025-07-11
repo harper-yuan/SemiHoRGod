@@ -19,6 +19,26 @@ std::tuple<int, int, int> sortThreeNumbers(int a, int b, int c) {
     return {a, b, c};  // 返回排序后的元组
 }
 
+std::tuple<int, int> findRemainingNumbers(int min, int mid, int max) {
+    std::vector<int> remaining;
+    for (int num : {0, 1, 2, 3, 4}) {
+        if (num != min && num != mid && num != max) {
+            remaining.push_back(num);
+        }
+    }
+    return {remaining[0], remaining[1]};
+}
+
+std::tuple<int, int, int> findRemainingNumbers(int min, int max) {
+  std::vector<int> remaining;
+  for (int num : {0, 1, 2, 3, 4}) {
+      if (num != min && num != max) {
+          remaining.push_back(num);
+      }
+  }
+  return {remaining[0], remaining[1], remaining[2]};
+}
+
 std::tuple<int, int> findOtherSenders(int min, int mid, int max, int id_) {
     if (id_ == min) {
         return {mid, max};  // mid < max
@@ -42,14 +62,14 @@ int pidFromOffset(int id, int offset) { //通过进程号pid+offset识别其编�
   return pid;
 }
 
-int idxFromSenderAndReceiver(int sender_id, int receiver_id) { //确定reciever所需数据，在sender所拥有的数组中的索引
-  //假如sender_id = 4, vector = {0,1,2,3},索引就是receiver_id
-  if (sender_id > receiver_id) {
-    return receiver_id;
+int idxFromSenderAndReceiver(int dataonwer_id, int data_index) { //确定reciever所需数据，在sender所拥有的数组中的索引
+  //假如data_index = 4, vector = {0,1,2,3},索引就是receiver_id
+  if (dataonwer_id > data_index) {
+    return data_index;
   }
-  //假如sender_id = 0, vector = {1,2,3,4},索引就是receiver_id-1
+  //假如data_index = 0, vector = {1,2,3,4},索引就是receiver_id-1
   else {
-    return receiver_id-1;
+    return data_index-1;
   }
 }
 

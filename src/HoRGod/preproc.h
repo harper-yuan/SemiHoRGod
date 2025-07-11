@@ -156,5 +156,5 @@ struct PreprocCircuit {
   PreprocCircuit() = default;
   PreprocCircuit(size_t num_gates, size_t num_output)
       : gates(num_gates), output(num_output) {}
-};
+  };
 };  // namespace HoRGod

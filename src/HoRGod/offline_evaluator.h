@@ -13,7 +13,7 @@
 
 #include "../io/netmp.h"
 #include "../utils/circuit.h"
-#include "jump_provider.h"
+#include "ijmp.h"
 #include "ot_provider.h"
 #include "preproc.h"
 #include "rand_gen_pool.h"
@@ -25,13 +25,14 @@ class OfflineEvaluator {
   int id_;
   int security_param_;
   RandGenPool rgen_;
+
   std::shared_ptr<io::NetIOMP<5>> network_;
   std::shared_ptr<io::NetIOMP<5>> network_ot_;
   utils::LevelOrderedCircuit circ_;
   std::shared_ptr<ThreadPool> tpool_;
   PreprocCircuit<Ring> preproc_;
   std::vector<std::unique_ptr<OTProvider>> ot_;
-  JumpProvider jump_;
+  ImprovedJmp jump_;
   NTL::ZZ_pContext ZZ_p_ctx_;
   NTL::ZZ_pEContext ZZ_pE_ctx_;
 
@@ -39,25 +40,6 @@ class OfflineEvaluator {
   std::vector<utils::FIn2Gate> mult_gates_;
   std::array<std::vector<Ring>, 3> ab_terms_;
   std::array<std::vector<Ring>, 6> c_terms_;
-
-  NTL::Vec<NTL::ZZ_pE> zk_prove_;
-  std::array<NTL::Vec<NTL::ZZ_pE>, 3> zk_verify_;
-  std::array<NTL::Vec<NTL::ZZ_pE>, 3> zk_verify_inputs_;
-  std::vector<std::future<void>> zk_res_;
-  std::array<NTL::ZZ_pE, 3> zk_exp_val_;
-  std::array<std::vector<NTL::ZZ_pE>, 3> zk_check_;
-  NTL::ZZ_pE x_interp_;
-  std::array<NTL::ZZ_pE, 3> lagrange_coeff_d3_;
-  NTL::Mat<NTL::ZZ_pE> opp_check_shares_;
-
-  // Verifier computation for prover 'prover_id' for an iteration in the
-  // recursive distributed ZKP.
-  void zkVerifyRecursiveIter(int prover_id,
-                             const NTL::Vec<NTL::ZZ_pE>& poly_p_shares);
-
-  // Verifier computation for prover 'prover_id' for the base distributed ZKP.
-  void zkVerifyBase(int prover_id, emp::block cc_key,
-                    const NTL::Vec<NTL::ZZ_pE>& pi);
 
   // Used for running common coin protocol. Returns common random PRG key which
   // is then used to generate randomness for common coin output.
@@ -71,6 +53,9 @@ class OfflineEvaluator {
                    utils::LevelOrderedCircuit circ, int security_param,
                    int threads, int seed = 200);
 
+  //reconstruct protocol
+  std::vector<Ring> reconstruct(const std::array<std::vector<Ring>, 4>& recon_shares);
+
   // Generate sharing of a random unknown value.
   static void randomShare(RandGenPool& rgen, ReplicatedShare<Ring>& share);
   // Generate sharing of a random value known to dealer (called by all parties
@@ -79,11 +64,16 @@ class OfflineEvaluator {
                                    ReplicatedShare<Ring>& share);
   // Generate sharing of a random value known to party. Should be called by
   // dealer when other parties call other variant.
-  static void randomShareWithParty(int id, RandGenPool& rgen,
-                                   ReplicatedShare<Ring>& share, Ring& secret);
-
+  static void randomShareWithParty(int id, RandGenPool& rgen, ReplicatedShare<Ring>& share, Ring& secret);
+  
+  ReplicatedShare<Ring> jshShare(int id, RandGenPool& rgen, int i, int j, int k);
+  
+  // Generate sharing of a random value, party i don't know the secret x_i
+  ReplicatedShare<Ring> randomShareWithParty(int id, RandGenPool& rgen);
   // Following methods implement various preprocessing subprotocols.
 
+  //Used for multiplication to compute α_{xy}
+  ReplicatedShare<Ring> compute_prod_mask(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2);
   // Set masks for each wire. Should be called before running any of the other
   // subprotocols.
   void setWireMasks(
@@ -104,14 +94,16 @@ class OfflineEvaluator {
   PreprocCircuit<Ring> getPreproc();
 
   // Efficiently runs above subprotocols.
-  PreprocCircuit<Ring> run(
-      const std::unordered_map<utils::wire_t, int>& input_pid_map);
+  PreprocCircuit<Ring> run(const utils::LevelOrderedCircuit& circ,
+    const std::unordered_map<utils::wire_t, int>& input_pid_map,
+    size_t security_param, int pid, emp::PRG& prg);
 
   // secure preprocessing
-  static PreprocCircuit<Ring> offline_setwire(
+  PreprocCircuit<Ring> offline_setwire(
       const utils::LevelOrderedCircuit& circ,
       const std::unordered_map<utils::wire_t, int>& input_pid_map,
       size_t security_param, int pid, emp::PRG& prg);
+
   // Insecure preprocessing. All preprocessing data is generated in clear but
   // cast in a form that can be used in the online phase.
   static PreprocCircuit<Ring> dummy(

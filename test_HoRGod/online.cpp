@@ -199,16 +199,6 @@ BOOST_DATA_TEST_CASE(const_add_gate,
 
   for (auto& p : parties) {
     auto output = p.get();
-    // for (auto x:output) {
-    //   std::cout<<x<<' ';
-    // }
-    // std::cout<<endl;
-    // std::cout<<"excepted output:";
-    // for (auto x:exp_output) {
-    //   std::cout<<x<<' ';
-    // }
-    // std::cout<<endl;
-    // // std::cout<<"excepted output:"<<exp_output;
     BOOST_TEST(output == exp_output);
   }
 }

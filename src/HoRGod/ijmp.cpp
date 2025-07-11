@@ -116,8 +116,7 @@ void ImprovedJmp::communicate(io::NetIOMP<5>& network, ThreadPool& tpool) {
   }
 
   // Receive data.
-  std::array<std::array<std::array<char, emp::Hash::DIGEST_SIZE>, 5>, 5>
-      recv_hash{};
+  std::array<std::array<std::array<char, emp::Hash::DIGEST_SIZE>, 5>, 5> recv_hash{};
   for (int sender = 0; sender < 5; ++sender) {
     if (sender == id_) { //如果id_是发送者，则不需要接收数据
       continue;
@@ -152,7 +151,6 @@ void ImprovedJmp::communicate(io::NetIOMP<5>& network, ThreadPool& tpool) {
               network.recv(sender, values.data() + values.size() - nbytes, nbytes);//收到的值会被放在数组末尾
               is_received3_[min][mid][max] = false;
             }
-            
           }
         }
       }
@@ -179,10 +177,7 @@ void ImprovedJmp::communicate(io::NetIOMP<5>& network, ThreadPool& tpool) {
         auto& values3 = recv_values3_[sender1][sender2][sender3];
         auto& final_values = final_recv_values_[sender1][sender2][sender3];
 
-        if (id_ == 4 && sender1==1 && sender2 == 2 && sender3 == 3)
-        {
-          std::cout<<"";
-        }
+        
         if (!values1.empty() && !values2.empty() && !values3.empty()) {
           if (isEqual(values1, values2)) {
             final_values = values1;

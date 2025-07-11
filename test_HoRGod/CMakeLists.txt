@@ -21,6 +21,9 @@ target_link_libraries(ijmp_test Boost::unit_test_framework Threads::Threads HoRG
 add_executable(online_test online.cpp)
 target_link_libraries(online_test Boost::unit_test_framework Threads::Threads HoRGod)
 
+add_executable(offline_online_test offline_online.cpp)
+target_link_libraries(offline_online_test Boost::unit_test_framework Threads::Threads HoRGod)
+
 add_custom_target(tests_HoRGod)
 add_dependencies(tests_HoRGod
     io_test sharing_test utils_test offline_test jump_test online_test)
@@ -32,3 +35,4 @@ add_test(NAME offline_test COMMAND offline_test)
 add_test(NAME jump_test COMMAND jump_test)
 add_test(NAME ijmp_test COMMAND ijmp_test)
 add_test(NAME online_test COMMAND online_test)
+add_test(NAME offline_online_test COMMAND offline_online_test)

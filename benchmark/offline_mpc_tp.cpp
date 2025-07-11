@@ -105,7 +105,7 @@ void benchmark(const bpo::variables_map& opts) {
   for (size_t r = 0; r < repeat; ++r) {
     OfflineEvaluator eval(pid, network1, network2, circ, security_param,
                           cm_threads, seed);
-
+    emp::PRG prg(&seed, 0);
     network1->sync();
     network2->sync();
 
@@ -114,7 +114,7 @@ void benchmark(const bpo::variables_map& opts) {
     CommPoint net1_st(*network1);
     CommPoint net2_st(*network2);
     TimePoint start;
-    eval.run(input_pid_map);
+    eval.run(circ, input_pid_map, security_param, pid, prg);
     TimePoint end;
     CommPoint net1_ed(*network1);
     CommPoint net2_ed(*network2);
@@ -168,7 +168,7 @@ bpo::options_description programOptions() {
     ("gates,g", bpo::value<size_t>()->required(), "Number of multiplication gates.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("cm-threads", bpo::value<size_t>()->default_value(7), "Number of threads for communication (recommended value is at least 7).")
+    ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended value is at least 7).")
     ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation (recommended value close to number of cores).")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")

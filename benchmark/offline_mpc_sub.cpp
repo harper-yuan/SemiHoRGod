@@ -132,8 +132,9 @@ void benchmark(const bpo::variables_map& opts) {
     network2->resetStats();
 
     nlohmann::json rbench;
-
-    BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
+    emp::PRG prg(&seed, 0);
+    BENCHMARK(rbench, "offline_setwire", eval.offline_setwire, circ, input_pid_map, security_param, pid, prg);
+    // BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
     // BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
     // BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);
     // BENCHMARK(rbench, "c_terms", eval.computeCCrossTerms);
@@ -179,7 +180,7 @@ bpo::options_description programOptions() {
     ("gates,g", bpo::value<size_t>()->required(), "Number of multiplication gates.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("cm-threads", bpo::value<size_t>()->default_value(6), "Number of threads for communication (recommended 6).")
+    ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended 6).")
     ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation.")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")

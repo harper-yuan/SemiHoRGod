@@ -97,20 +97,22 @@ void benchmark(const bpo::variables_map& opts) {
 
   for (size_t r = 0; r < repeat; ++r) {
     std::cout << "--- Repetition " << r + 1 << " ---\n";
-    auto preproc =
-        OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
+    OfflineEvaluator offline_eval(pid, network, nullptr, circ, security_param, threads);
+    // auto preproc =
+    //     OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
 
-    OnlineEvaluator eval(pid, network, std::move(preproc), circ, security_param,
-                         threads, seed);
+    // OnlineEvaluator eval(pid, network, std::move(preproc), circ, security_param,
+    //                      threads, seed);
 
     network->sync();
 
     std::cout << "Start evaluating " << "\n";
-    eval.setRandomInputs();
+    // eval.setRandomInputs();
     StatsPoint start(*network);
-    for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
-      eval.evaluateGatesAtDepth(i);
-    }
+    // for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
+    //   eval.evaluateGatesAtDepth(i);
+    // }
+    auto preproc = offline_eval.offline_setwire(circ, input_pid_map, security_param, pid, prg); //每个i需要预处理
     StatsPoint end(*network);
     std::cout << "End evaluating " << "\n";
     auto rbench = end - start;

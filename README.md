@@ -106,6 +106,9 @@ gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10 -t 1
 # Benchmark online phase for neural network inference.
 ../run.sh ./benchmarks/online_nn -n fcn
 
+# Benchmark offline phase for neural network inference.
+../run.sh ./benchmarks/offline_nn -n fcn
+
 # Benchmark offline phase for MPC.
 ../run.sh ./benchmarks/offline_mpc_tp -g 1024
 
@@ -135,4 +138,12 @@ gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
 ./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 >/dev/null &
 ./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 >/dev/null &
 valgrind --log-file=valgrind_p4.log ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
+
+
+./benchmarks/offline_mpc_tp -p 0 --localhost -g 100 >/dev/null &
+./benchmarks/offline_mpc_tp -p 1 --localhost -g 100 >/dev/null &
+./benchmarks/offline_mpc_tp -p 2 --localhost -g 100 >/dev/null &
+./benchmarks/offline_mpc_tp -p 3 --localhost -g 100 >/dev/null &
+./benchmarks/offline_mpc_tp -p 4 --localhost -g 100
+gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
 ```
