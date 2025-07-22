@@ -102,6 +102,15 @@ class ReplicatedShare {
     return result;                      // 返回新对象
   }
 
+  ReplicatedShare<R> cosnt_mul(const R& rhs) const {
+    ReplicatedShare<R> result = *this;  // 复制当前对象
+    result.values_[0] *= rhs;           // 每个元素加常量
+    result.values_[1] *= rhs;
+    result.values_[2] *= rhs;
+    result.values_[3] *= rhs;
+    return result;                      // 返回新对象
+  }
+
   friend ReplicatedShare<R> operator+(ReplicatedShare<R> lhs,
                                       const ReplicatedShare<R>& rhs) {
     lhs += rhs;

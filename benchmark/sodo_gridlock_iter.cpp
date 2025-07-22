@@ -78,7 +78,7 @@ void benchmark(const bpo::variables_map& opts) {
     fnet >> netdata;
     fnet.close();
 
-    std::vector<std::string> ipaddress(4);
+    std::vector<std::string> ipaddress(5);
     std::array<char*, 5> ip{};
     for (size_t i = 0; i < 5; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();

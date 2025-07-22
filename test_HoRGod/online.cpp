@@ -280,7 +280,6 @@ BOOST_DATA_TEST_CASE(mul_gate,
 BOOST_AUTO_TEST_CASE(dotp_gate) {
   auto seed = emp::makeBlock(100, 200);
   int nf = 10;
-
   Circuit<Ring> circ;
   std::vector<wire_t> vwa(nf);
   std::vector<wire_t> vwb(nf);

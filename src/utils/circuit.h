@@ -405,7 +405,6 @@ class Circuit {
                 auto temp = wires[g->in1.at(i)] * wires[g->in2.at(i)];
                 wires[g->out] += temp;
               }
-
               wires[g->out] = wires[g->out] >> FRACTION;
             }
             break;

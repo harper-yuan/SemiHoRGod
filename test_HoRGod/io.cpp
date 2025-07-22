@@ -5,9 +5,7 @@
 #include <future>
 #include <random>
 #include <vector>
-
 BOOST_AUTO_TEST_SUITE(netmp)
-
 BOOST_AUTO_TEST_CASE(test_harper_2PC) {
   // std::vector<uint8_t> message = {31,21,11};
   std::string message("1 to 0");
