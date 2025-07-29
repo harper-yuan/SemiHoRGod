@@ -1,6 +1,6 @@
 #include <io/netmp.h>
-#include <HoRGod/offline_evaluator.h>
-#include <HoRGod/online_evaluator.h>
+#include <SemiHoRGod/offline_evaluator.h>
+#include <SemiHoRGod/online_evaluator.h>
 #include <utils/circuit.h>
 #include <utils/neural_network.h>
 
@@ -12,7 +12,7 @@
 
 #include "utils.h"
 
-using namespace HoRGod;
+using namespace SemiHoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
 
@@ -33,9 +33,9 @@ void benchmark(const bpo::variables_map& opts) {
   auto neural_network = opts["neural-network"].as<std::string>();
   auto batch_size = opts["batch-size"].as<size_t>();
 
-  std::shared_ptr<io::NetIOMP<5>> network = nullptr;
+  std::shared_ptr<io::NetIOMP<NP>> network = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network = std::make_shared<io::NetIOMP<5>>(pid, port, nullptr, true);
+    network = std::make_shared<io::NetIOMP<NP>>(pid, port, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -47,13 +47,13 @@ void benchmark(const bpo::variables_map& opts) {
     fnet.close();
 
     std::vector<std::string> ipaddress(4);
-    std::array<char*, 5> ip{};
+    std::array<char*, NP> ip{};
     for (size_t i = 0; i < 5; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
 
-    network = std::make_shared<io::NetIOMP<5>>(pid, port, ip.data(), false);
+    network = std::make_shared<io::NetIOMP<NP>>(pid, port, ip.data(), false);
   }
 
   json output_data;

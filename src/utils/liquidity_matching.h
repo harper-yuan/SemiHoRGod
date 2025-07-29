@@ -5,10 +5,10 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#include "../HoRGod/types.h"
+#include "../SemiHoRGod/types.h"
 #include "circuit.h"
 
-namespace HoRGod::utils {
+namespace SemiHoRGod::utils {
 
 // Source-open Destination-open Transaction
 struct SoDoTxn {
@@ -200,4 +200,4 @@ class SoDoGridLock {
     return output;
   }
 };
-}  // namespace HoRGod::utils
+}  // namespace SemiHoRGod::utils

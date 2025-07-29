@@ -1,1 +1,0 @@
-/usr/bin/c++  -g  -rdynamic CMakeFiles/sharing_test.dir/sharing.o  -o tests/sharing_test  -lBoost::unit_test_framework -lThreads::Threads -lHoRGod 

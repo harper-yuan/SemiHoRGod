@@ -1,6 +1,6 @@
-# HoRGod
+# SemiHoRGod
 
-This directory contains the implementation of the HoRGod fair protocol.
+This directory contains the implementation of the SemiHoRGod fair protocol.
 The protocol is implemented in C++17 and [CMake](https://cmake.org/) is used as the build system.
 
 ## External Dependencies
@@ -18,16 +18,16 @@ All required dependencies to compile and run the project are available through t
 To build and run the docker image, execute the following commands from the root directory of the repository:
 
 ```sh
-# Build the HoRGod Docker image.
+# Build the SemiHoRGod Docker image.
 #
 # Building the Docker image requires at least 4GB RAM. This needs to be set 
 # explicitly in case of Windows and MacOS.
-docker build -t HoRGod_harper .
+docker build -t SemiHoRGod_harper .
 
 # Create and run a container.
 #
 # This should start the shell from within the container.
-docker run -it -v $PWD:/code --name HoRGod_harper HoRGod_harper 
+docker run -it -v $PWD:/code --name SemiHoRGod_harper SemiHoRGod_harper 
 
 # The following command changes the working directory to the one containing the 
 # source code and should be run on the shell started using the previous command.
@@ -52,10 +52,10 @@ make <target>
 A short description of the compiled programs is given below.
 All of them provide detailed usage description on using the `--help` option.
 
-- `benchmarks/online_mpc`: Benchmark the performance of the HoRGod online phase by evaluating a circuit with a given depth and number of multiplication gates at each depth.
-- `benchmarks/online_nn`: Benchmark the performance of the HoRGod online phase for neural network inference on the FCN and LeNet models.
-- `benchmarks/offline_mpc_tp`: Benchmark the performance of the HoRGod offline phase for a circuit with given number of multiplication gates.
-- `benchmarks/offline_mpc_sub`: Benchmark the performance of the subprotocols used in the HoRGod offline phase.
+- `benchmarks/online_mpc`: Benchmark the performance of the SemiHoRGod online phase by evaluating a circuit with a given depth and number of multiplication gates at each depth.
+- `benchmarks/online_nn`: Benchmark the performance of the SemiHoRGod online phase for neural network inference on the FCN and LeNet models.
+- `benchmarks/offline_mpc_tp`: Benchmark the performance of the SemiHoRGod offline phase for a circuit with given number of multiplication gates.
+- `benchmarks/offline_mpc_sub`: Benchmark the performance of the subprotocols used in the SemiHoRGod offline phase.
 - `benchmarks/sodo_gridlock_iter`: Benchmark the performance of an iteration of the sodoGR protocol of AST22 for liquidity matching.
 - `tests/*`: These programs contain unit tests for various parts of the codebase. The test coverage is currently incomplete. However, the protocols have been manually verified for correctness.
 

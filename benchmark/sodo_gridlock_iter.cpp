@@ -1,6 +1,6 @@
 #include <io/netmp.h>
-#include <HoRGod/offline_evaluator.h>
-#include <HoRGod/online_evaluator.h>
+#include <SemiHoRGod/offline_evaluator.h>
+#include <SemiHoRGod/online_evaluator.h>
 #include <utils/circuit.h>
 #include <utils/liquidity_matching.h>
 
@@ -14,7 +14,7 @@
 
 #include "utils.h"
 
-using namespace HoRGod;
+using namespace SemiHoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
 
@@ -65,9 +65,9 @@ void benchmark(const bpo::variables_map& opts) {
   auto num_banks = opts["num-banks"].as<size_t>();
   auto num_txns = opts["num-txns"].as<size_t>();
 
-  std::shared_ptr<io::NetIOMP<5>> network = nullptr;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network = std::make_shared<io::NetIOMP<5>>(pid, port, nullptr, true);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -79,13 +79,13 @@ void benchmark(const bpo::variables_map& opts) {
     fnet.close();
 
     std::vector<std::string> ipaddress(5);
-    std::array<char*, 5> ip{};
-    for (size_t i = 0; i < 5; ++i) {
+    std::array<char*, NUM_PARTIES> ip{};
+    for (size_t i = 0; i < NUM_PARTIES; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
 
-    network = std::make_shared<io::NetIOMP<5>>(pid, port, ip.data(), false);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
   }
 
   json output_data;

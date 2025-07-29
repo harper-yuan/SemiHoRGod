@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Set the project name and version
-project(HoRGod VERSION 0.1)
+project(SemiHoRGod VERSION 0.1)
 
 # Specify the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -40,6 +40,6 @@ add_subdirectory(src)
 add_subdirectory(benchmark)
 
 enable_testing()
-# add_subdirectory(test test_HoRGod)
-add_subdirectory(test_HoRGod)
+# add_subdirectory(test test_SemiHoRGod)
+add_subdirectory(test_SemiHoRGod)
 # add_subdirectory()

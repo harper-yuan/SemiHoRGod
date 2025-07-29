@@ -1,1 +1,0 @@
-/usr/bin/c++  -g  -rdynamic CMakeFiles/jump_test.dir/jump.o  -o tests/jump_test  -lBoost::unit_test_framework -lThreads::Threads -lHoRGod 

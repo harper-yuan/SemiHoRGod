@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace HoRGod::utils {
+namespace SemiHoRGod::utils {
 
 Gate::Gate(GateType type, wire_t out) : type(type), out(out) {}
 
@@ -77,4 +77,4 @@ std::ostream& operator<<(std::ostream& os, const LevelOrderedCircuit& circ) {
   os << "Depth: " << circ.gates_by_level.size() << "\n";
   return os;
 }
-};  // namespace HoRGod::utils
+};  // namespace SemiHoRGod::utils

@@ -1,5 +1,5 @@
 #include <io/netmp.h>
-#include <HoRGod/offline_evaluator.h>
+#include <SemiHoRGod/offline_evaluator.h>
 #include <utils/circuit.h>
 
 #include <algorithm>
@@ -29,7 +29,7 @@
     acc[lbl]["communication"] = res1;          \
   })
 
-using namespace HoRGod;
+using namespace SemiHoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
 
@@ -67,11 +67,11 @@ void benchmark(const bpo::variables_map& opts) {
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
 
-  std::shared_ptr<io::NetIOMP<5>> network1 = nullptr;
-  std::shared_ptr<io::NetIOMP<5>> network2 = nullptr;
+  std::shared_ptr<io::NetIOMP<NP>> network1 = nullptr;
+  std::shared_ptr<io::NetIOMP<NP>> network2 = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network1 = std::make_shared<io::NetIOMP<5>>(pid, port, nullptr, true);
-    network2 = std::make_shared<io::NetIOMP<5>>(pid, port + 100, nullptr, true);
+    network1 = std::make_shared<io::NetIOMP<NP>>(pid, port, nullptr, true);
+    network2 = std::make_shared<io::NetIOMP<NP>>(pid, port + 100, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -83,15 +83,15 @@ void benchmark(const bpo::variables_map& opts) {
     fnet.close();
 
     std::vector<std::string> ipaddress(5);
-    std::array<char*, 5> ip{};
-    for (size_t i = 0; i < 5; ++i) {
+    std::array<char*, NP> ip{};
+    for (size_t i = 0; i < NP; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
 
-    network1 = std::make_shared<io::NetIOMP<5>>(pid, port, ip.data(), false);
+    network1 = std::make_shared<io::NetIOMP<NP>>(pid, port, ip.data(), false);
     network2 =
-        std::make_shared<io::NetIOMP<5>>(pid, port + 100, ip.data(), false);
+        std::make_shared<io::NetIOMP<NP>>(pid, port + 100, ip.data(), false);
   }
 
   json output_data;

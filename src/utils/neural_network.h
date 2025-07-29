@@ -3,10 +3,10 @@
 #include <boost/multi_array.hpp>
 #include <stdexcept>
 
-#include "../HoRGod/types.h"
+#include "../SemiHoRGod/types.h"
 #include "circuit.h"
 
-namespace HoRGod::utils {
+namespace SemiHoRGod::utils {
 using wmat2_t = boost::multi_array<wire_t, 2>;
 using wmat3_t = boost::multi_array<wire_t, 3>;
 using wmat4_t = boost::multi_array<wire_t, 4>;
@@ -272,4 +272,4 @@ class NeuralNetwork {
     return std::move(nn);
   }
 };
-}  // namespace HoRGod::utils
+}  // namespace SemiHoRGod::utils

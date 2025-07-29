@@ -1,0 +1,36 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/harper/Desktop/SE/harper_code/5PC/test/online.cpp
+emp-tool/emp-tool.h
+-
+io/netmp.h
+-
+SemiHoRGod/offline_evaluator.h
+-
+SemiHoRGod/online_evaluator.h
+-
+SemiHoRGod/sharing.h
+-
+boost/test/data/monomorphic.hpp
+-
+boost/test/data/test_case.hpp
+-
+boost/test/included/unit_test.hpp
+-
+cmath
+-
+future
+-
+memory
+-
+string
+-
+vector
+-
+

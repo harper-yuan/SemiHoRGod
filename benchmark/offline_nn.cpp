@@ -1,6 +1,6 @@
 #include <io/netmp.h>
-#include <HoRGod/offline_evaluator.h>
-#include <HoRGod/online_evaluator.h>
+#include <SemiHoRGod/offline_evaluator.h>
+#include <SemiHoRGod/online_evaluator.h>
 #include <utils/circuit.h>
 #include <utils/neural_network.h>
 
@@ -12,7 +12,7 @@
 
 #include "utils.h"
 
-using namespace HoRGod;
+using namespace SemiHoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
 
@@ -33,9 +33,9 @@ void benchmark(const bpo::variables_map& opts) {
   auto neural_network = opts["neural-network"].as<std::string>();
   auto batch_size = opts["batch-size"].as<size_t>();
 
-  std::shared_ptr<io::NetIOMP<5>> network = nullptr;
+  std::shared_ptr<io::NetIOMP<NP>> network = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network = std::make_shared<io::NetIOMP<5>>(pid, port, nullptr, true);
+    network = std::make_shared<io::NetIOMP<NP>>(pid, port, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -47,13 +47,13 @@ void benchmark(const bpo::variables_map& opts) {
     fnet.close();
 
     std::vector<std::string> ipaddress(4);
-    std::array<char*, 5> ip{};
+    std::array<char*, NP> ip{};
     for (size_t i = 0; i < 5; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
 
-    network = std::make_shared<io::NetIOMP<5>>(pid, port, ip.data(), false);
+    network = std::make_shared<io::NetIOMP<NP>>(pid, port, ip.data(), false);
   }
 
   json output_data;
@@ -99,7 +99,7 @@ void benchmark(const bpo::variables_map& opts) {
     std::cout << "--- Repetition " << r + 1 << " ---\n";
     OfflineEvaluator offline_eval(pid, network, nullptr, circ, security_param, threads);
     // auto preproc =
-    //     OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
+    //     OfflineEvaluator::dummy(circ, iNP>ut_pid_map, security_param, pid, prg);
 
     // OnlineEvaluator eval(pid, network, std::move(preproc), circ, security_param,
     //                      threads, seed);
@@ -107,7 +107,7 @@ void benchmark(const bpo::variables_map& opts) {
     network->sync();
 
     std::cout << "Start evaluating " << "\n";
-    // eval.setRandomInputs();
+    // eval.setRandominputs();
     StatsPoint start(*network);
     // for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
     //   eval.evaluateGatesAtDepth(i);
@@ -154,7 +154,7 @@ bpo::options_description programOptions() {
   bpo::options_description desc("Following options are supported by config file too.");
   desc.add_options()
     ("neural-network,n", bpo::value<std::string>()->required(), "Network name (fcn | lenet).")
-    ("batch-size", bpo::value<size_t>()->default_value(1), "Input batch size.")
+    ("batch-size", bpo::value<size_t>()->default_value(1), "INP>ut batch size.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
     ("threads,t", bpo::value<size_t>()->default_value(1), "Number of threads (recommended 6).")

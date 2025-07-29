@@ -1,11 +1,11 @@
 #pragma once
 
 #include <io/netmp.h>
-
 #include <array>
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <string>
+
 
 struct TimePoint {
   using timepoint_t = std::chrono::high_resolution_clock::time_point;
@@ -18,10 +18,10 @@ struct TimePoint {
 };
 
 struct CommPoint {
-  std::array<uint64_t, 5> stats;
+  std::array<uint64_t, NP> stats;
 
-  explicit CommPoint(io::NetIOMP<5>& network);
-  std::array<uint64_t, 5> operator-(const CommPoint& rhs) const;
+  explicit CommPoint(io::NetIOMP<NP>& network);
+  std::array<uint64_t, NP> operator-(const CommPoint& rhs) const;
 };
 
 class StatsPoint {
@@ -29,7 +29,7 @@ class StatsPoint {
   CommPoint cpoint_;
 
  public:
-  explicit StatsPoint(io::NetIOMP<5>& network);
+  explicit StatsPoint(io::NetIOMP<NP>& network);
   nlohmann::json operator-(const StatsPoint& rhs);
 };
 

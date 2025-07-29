@@ -12,10 +12,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../HoRGod/helpers.h"
-#include "../HoRGod/types.h"
+#include "../SemiHoRGod/helpers.h"
+#include "../SemiHoRGod/types.h"
 
-namespace HoRGod::utils {
+namespace SemiHoRGod::utils {
 
 using wire_t = size_t; //size_t是一个64bit的无符号整数，能够表示任何对象的大小，常用于表示字符串长度、数组下标、内存分配的大小以及标准库函数的参数和返回值。
 //用来定义门的类型，有加法门，乘法门等等
@@ -537,4 +537,4 @@ class Circuit {
     return circ;
   }
 };
-};  // namespace HoRGod::utils
+};  // namespace SemiHoRGod::utils
