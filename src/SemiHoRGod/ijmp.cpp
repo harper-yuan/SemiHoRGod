@@ -11,9 +11,9 @@ namespace SemiHoRGod {
 ImprovedJmp::ImprovedJmp(int my_id) : id_(my_id), recv_lengths_{}, send_{} {}
 
 void ImprovedJmp::reset() {
-  for (size_t i = 0; i < NP ; ++i) {
-    for (size_t j = 0; j < NP ; ++j) {
-      for(size_t k = 0; k < NP ; ++k)
+  for (size_t i = 0; i < NUM_PARTIES ; ++i) {
+    for (size_t j = 0; j < NUM_PARTIES ; ++j) {
+      for(size_t k = 0; k < NUM_PARTIES ; ++k)
       {
         send_[i][j][k] = false;  //代表进程中通信状态，i是否需要向j通信
         send_hash_[i][j][k].reset(); //
@@ -70,18 +70,18 @@ void ImprovedJmp::jumpUpdate(int sender1, int sender2, int sender3, int receiver
   send_[other_sender1][other_sender2][receiver] = true;
 }
 
-void ImprovedJmp::communicate(io::NetIOMP<NP>& network, ThreadPool& tpool) {
+void ImprovedJmp::communicate(io::NetIOMP<NUM_PARTIES>& network, ThreadPool& tpool) {
   std::vector<std::future<void>> res; // std::future<void>作用：表示一个异步操作的结果（来自 std::async、std::promise 或线程池任务）。
 
   // Send data.
-  for (int receiver = 0; receiver < NP ; ++receiver) {
+  for (int receiver = 0; receiver < NUM_PARTIES ; ++receiver) {
     if (receiver == id_) { //如果id_是接收者，不用发送数据，于是跳过
       continue;
     }
     //下面的情况，id_一定是发送者，所以遍历所有可能的发送情况，是否需要发送查询send_即可
     res.push_back(tpool.enqueue([&, receiver]() {
-      for (int other_sender1 = 0; other_sender1 < NP ; ++other_sender1) {
-        for (int other_sender2 = 0; other_sender2 < NP ; ++other_sender2) {//已经确定了
+      for (int other_sender1 = 0; other_sender1 < NUM_PARTIES ; ++other_sender1) {
+        for (int other_sender2 = 0; other_sender2 < NUM_PARTIES ; ++other_sender2) {//已经确定了
           if (other_sender1 == receiver || other_sender1 == id_ ||
               other_sender2 == receiver || other_sender2 == id_ || other_sender1 == other_sender2) { //确保id_一定是发送者
             continue;
@@ -111,15 +111,15 @@ void ImprovedJmp::communicate(io::NetIOMP<NP>& network, ThreadPool& tpool) {
   }
 
   // Receive data.
-  std::array<std::array<std::array<char, emp::Hash::DIGEST_SIZE>, NP>, NP> recv_hash{};
-  for (int sender = 0; sender < NP ; ++sender) {
+  std::array<std::array<std::array<char, emp::Hash::DIGEST_SIZE>, NUM_PARTIES>, NUM_PARTIES> recv_hash{};
+  for (int sender = 0; sender < NUM_PARTIES ; ++sender) {
     if (sender == id_) { //如果id_是发送者，则不需要接收数据
       continue;
     }
 
     res.push_back(tpool.enqueue([&, sender]() {
-      for (int other_sender1 = 0; other_sender1 < NP ; ++other_sender1) {
-        for (int other_sender2 = 0; other_sender2 < NP ; ++other_sender2) {
+      for (int other_sender1 = 0; other_sender1 < NUM_PARTIES ; ++other_sender1) {
+        for (int other_sender2 = 0; other_sender2 < NUM_PARTIES ; ++other_sender2) {
           if (other_sender1 == sender || other_sender1 == id_ ||
               other_sender2 == sender || other_sender2 == id_ || other_sender1 == other_sender2) { //彻底排除id_是发送者的可能，下面的代码中id_一定是接受者，是否接收查询recv_lengths_是否大于0
             continue;
@@ -159,9 +159,9 @@ void ImprovedJmp::communicate(io::NetIOMP<NP>& network, ThreadPool& tpool) {
   // Verify.
   emp::Hash hash;
   // std::array<char, emp::Hash::DIGEST_SIZE> digest{};
-  for (int sender1 = 0; sender1 < NP ; ++sender1) {
-    for (int sender2 = sender1 + 1; sender2 < NP ; ++sender2) {
-      for (int sender3 = sender2 + 1; sender3 < NP ; ++sender3) {
+  for (int sender1 = 0; sender1 < NUM_PARTIES ; ++sender1) {
+    for (int sender2 = sender1 + 1; sender2 < NUM_PARTIES ; ++sender2) {
+      for (int sender3 = sender2 + 1; sender3 < NUM_PARTIES ; ++sender3) {
         if (sender1 == id_ || sender2 == id_ || sender3 == id_) {
           continue;
         }

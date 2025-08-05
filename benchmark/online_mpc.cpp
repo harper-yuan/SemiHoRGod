@@ -60,9 +60,9 @@ void benchmark(const bpo::variables_map& opts) {
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
 
-  std::shared_ptr<io::NetIOMP<NP>> network = nullptr;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network = std::make_shared<io::NetIOMP<NP>>(pid, port, nullptr, true);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -74,13 +74,13 @@ void benchmark(const bpo::variables_map& opts) {
     fnet.close();
 
     std::vector<std::string> ipaddress(4);
-    std::array<char*, NP> ip{};
-    for (size_t i = 0; i < 5; ++i) {
+    std::array<char*, NUM_PARTIES> ip{};
+    for (size_t i = 0; i < NUM_PARTIES; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
 
-    network = std::make_shared<io::NetIOMP<NP>>(pid, port, ip.data(), false);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
   }
 
   json output_data;

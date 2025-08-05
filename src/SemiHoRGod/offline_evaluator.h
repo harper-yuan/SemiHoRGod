@@ -10,7 +10,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-
+#include <tuple>
 #include "../io/netmp.h"
 #include "../utils/circuit.h"
 #include "ijmp.h"
@@ -25,8 +25,8 @@ class OfflineEvaluator {
   int security_param_;
   RandGenPool rgen_;
 
-  std::shared_ptr<io::NetIOMP<NP>> network_;
-  std::shared_ptr<io::NetIOMP<NP>> network_ot_;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network_;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network_ot_;
   utils::LevelOrderedCircuit circ_;
   std::shared_ptr<ThreadPool> tpool_;
   PreprocCircuit<Ring> preproc_;
@@ -44,13 +44,14 @@ class OfflineEvaluator {
  public:
   // `network_1` and `network_2` are required to be distinct.
   // `network_2` is used for OT while `network_1` is used for all other tasks.
-  OfflineEvaluator(int my_id, std::shared_ptr<io::NetIOMP<NP>> network1,
-                   std::shared_ptr<io::NetIOMP<NP>> network2,
+  OfflineEvaluator(int my_id, std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1,
+                   std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network2,
                    utils::LevelOrderedCircuit circ, int security_param,
                    int threads, int seed = 200);
 
   //reconstruct protocol
-  std::vector<Ring> reconstruct(const std::array<std::vector<Ring>, 4>& recon_shares);
+  std::vector<Ring> elementwise_sum(const std::array<std::vector<Ring>, NUM_RSS>& recon_shares, int i, int j, int k);
+  std::vector<Ring> reconstruct(const std::array<std::vector<Ring>, NUM_RSS>& recon_shares);
   std::vector<Ring> reconstruct(const std::vector<ReplicatedShare<Ring>>& shares);
 
   // Generate sharing of a random unknown value.
@@ -80,10 +81,6 @@ class OfflineEvaluator {
   vector<ReplicatedShare<Ring>> comute_random_r_every_bit_sharing(int id, ReplicatedShare<Ring> r_1_mask,
                                                                           ReplicatedShare<Ring> r_2_mask,
                                                                           ReplicatedShare<Ring> r_3_mask);
-  // Set masks for each wire. Should be called before running any of the other
-  // subprotocols.
-  void setWireMasks(
-      const std::unordered_map<utils::wire_t, int>& input_pid_map);
   // Computes S_1 and S_2 summands.
   void computeABCrossTerms();
   // Computes S_0 summands by running instances of disMult.

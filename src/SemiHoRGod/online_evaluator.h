@@ -21,7 +21,7 @@ class OnlineEvaluator {
   Ring msb_temp_value_ ;
   Ring relu_temp_value_ ;
   RandGenPool rgen_;  //随机数生成器
-  std::shared_ptr<io::NetIOMP<NP>> network_;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network_;
   PreprocCircuit<Ring> preproc_; //预处理环
   utils::LevelOrderedCircuit circ_; //
   std::vector<Ring> wires_; //Ring = uint64_t
@@ -32,6 +32,7 @@ class OnlineEvaluator {
   // Reconstruct shares stored in recon_shares_.
   // Argument format is more suitable for communication compared to
   // vector<ReplicatedShare<Ring>>.
+  std::vector<Ring> elementwise_sum(const std::array<std::vector<Ring>, NUM_RSS>& recon_shares, int i, int j, int k);
   std::vector<Ring> reconstruct(
       const std::array<std::vector<Ring>, NUM_RSS>& recon_shares); //通过秘密重构数据
 
@@ -42,11 +43,11 @@ class OnlineEvaluator {
       const std::vector<utils::FIn1Gate>& msb_gates);
 
  public:
-  OnlineEvaluator(int id, std::shared_ptr<io::NetIOMP<NP>> network,
+  OnlineEvaluator(int id, std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network,
                   PreprocCircuit<Ring> preproc, utils::LevelOrderedCircuit circ,
                   int security_param, int threads, int seed = 200);
 
-  OnlineEvaluator(int id, std::shared_ptr<io::NetIOMP<NP>> network,
+  OnlineEvaluator(int id, std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network,
                   PreprocCircuit<Ring> preproc, utils::LevelOrderedCircuit circ,
                   int security_param, std::shared_ptr<ThreadPool> tpool,
                   int seed = 200);
@@ -84,14 +85,14 @@ struct BoolEvaluator {
 
   static std::vector<BoolRing> reconstruct(
       int id, const std::array<std::vector<BoolRing>, NUM_RSS>& recon_shares,
-      io::NetIOMP<NP>& network, ImprovedJmp& jump, ThreadPool& tpool);
+      io::NetIOMP<NUM_PARTIES>& network, ImprovedJmp& jump, ThreadPool& tpool);
 
-  void evaluateGatesAtDepth(size_t depth, io::NetIOMP<NP>& network,
+  void evaluateGatesAtDepth(size_t depth, io::NetIOMP<NUM_PARTIES>& network,
                             ImprovedJmp& jump, ThreadPool& tpool);
-  void evaluateAllLevels(io::NetIOMP<NP>& network, ImprovedJmp& jump,
+  void evaluateAllLevels(io::NetIOMP<NUM_PARTIES>& network, ImprovedJmp& jump,
                          ThreadPool& tpool);
 
-  std::vector<std::vector<BoolRing>> getOutputShares(io::NetIOMP<NP>& network,
+  std::vector<std::vector<BoolRing>> getOutputShares(io::NetIOMP<NUM_PARTIES>& network,
                                       ImprovedJmp& jump, ThreadPool& tpool);
 };
 };  // namespace SemiHoRGod

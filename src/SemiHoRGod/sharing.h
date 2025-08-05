@@ -8,8 +8,7 @@
 #include "helpers.h"
 #include "types.h"
 
-#define NUM_RSS 21
-#define NUM_DSS 21
+
 namespace SemiHoRGod {
 
 template <class R>
@@ -36,14 +35,14 @@ class ReplicatedShare {
   R& operator[](size_t idx) { return values_.at(idx); }
 
   R operator[](size_t idx) const { return values_.at(idx); }
-
+  
   [[nodiscard]] R sum() const {
     R result = 0;
     for(int i = 0;i<NUM_RSS;i++) {
       result += values_[i];
     }
     return result; 
-    }
+  }
 
   // Arithmetic operators.
   ReplicatedShare<R>& operator+=(const ReplicatedShare<R> rhs) {
@@ -190,11 +189,11 @@ struct DummyShare {
   }
 
   ReplicatedShare<R> getRSS(size_t pid) {//返回对应的冗余秘密共享，对于pid=0，返回的共享值为1,2,3,4，即不包含0
-    pid = pid % NP;
+    pid = pid % NUM_PARTIES;
     std::array<R, NUM_RSS> values;
     size_t counter = 0;
-    for (size_t i = 0; i < NP; ++i) {
-      for (size_t j = i+1; j < NP; ++j) {
+    for (size_t i = 0; i < NUM_PARTIES; ++i) {
+      for (size_t j = i+1; j < NUM_PARTIES; ++j) {
         if (i != pid && j != pid) { 
           values[upperTriangularToArray(i, j)] = share_elements.at(upperTriangularToArray(i, j));
         }

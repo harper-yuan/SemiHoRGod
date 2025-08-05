@@ -39,6 +39,26 @@ std::tuple<int, int, int> findRemainingNumbers(int min, int max) {
   return {remaining[0], remaining[1], remaining[2]};
 }
 
+std::tuple<int, int, int, int> findRemainingNumbers_7PC(int i, int j, int k) {
+  std::vector<int> remaining;
+  for (int num : {0, 1, 2, 3, 4, 5, 6}) {
+      if (num != i && num != j && num != k) {
+          remaining.push_back(num);
+      }
+  }
+  return {remaining[0], remaining[1], remaining[2], remaining[3]};
+}
+
+std::tuple<int, int, int> findRemainingNumbers_7PC(int i, int j, int k, int id) {
+  std::vector<int> remaining;
+  for (int num : {0, 1, 2, 3, 4, 5, 6}) {
+      if (num != i && num != j && num != k && num != id) {
+          remaining.push_back(num);
+      }
+  }
+  return {remaining[0], remaining[1], remaining[2]};
+}
+
 std::tuple<int, int> findOtherSenders(int min, int mid, int max, int id_) {
     if (id_ == min) {
         return {mid, max};  // mid < max
@@ -55,9 +75,9 @@ bool isEqual(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
 }
 
 int pidFromOffset(int id, int offset) { //通过进程号pid+offset识别其编号i ∈ {0,1,2,3,4}
-  int pid = (id + offset) % NP;
+  int pid = (id + offset) % NUM_PARTIES;
   if (pid < 0) {
-    pid += NP;
+    pid += NUM_PARTIES;
   }
   return pid;
 }

@@ -10,8 +10,8 @@
 
 namespace SemiHoRGod{
 OfflineEvaluator::OfflineEvaluator(int my_id,
-                                   std::shared_ptr<io::NetIOMP<NP>> network1,
-                                   std::shared_ptr<io::NetIOMP<NP>> network2,
+                                   std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1,
+                                   std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network2,
                                    utils::LevelOrderedCircuit circ,
                                    int security_param, int threads, int seed)
     : id_(my_id),
@@ -25,8 +25,21 @@ OfflineEvaluator::OfflineEvaluator(int my_id,
   tpool_ = std::make_shared<ThreadPool>(threads);
 }
 
+std::vector<Ring> OfflineEvaluator::elementwise_sum(const std::array<std::vector<Ring>, NUM_RSS>& recon_shares, int i, int j, int k) {
+    // 检查向量是否非空且大小一致
+    if (recon_shares[i].empty()) return {};
+    size_t size = recon_shares[i].size();
+    assert(recon_shares[j].size() == size && recon_shares[k].size() == size);
+    
+    std::vector<Ring> result(size);
+    for (size_t index = 0; index < size; ++index) {
+        result[index] = recon_shares[i][index] + recon_shares[j][index] + recon_shares[k][index];
+    }
+    return result;
+}
+
 std::vector<Ring> OfflineEvaluator::reconstruct(
-    const std::array<std::vector<Ring>, 4>& recon_shares) {
+    const std::array<std::vector<Ring>, NUM_RSS>& recon_shares) {
   // All vectors in recon_shares should have same size.
   size_t num = recon_shares[0].size();
   size_t nbytes = sizeof(Ring) * num;
@@ -35,26 +48,64 @@ std::vector<Ring> OfflineEvaluator::reconstruct(
     return {};
   }
 
-  std::vector<Ring> vres(num);
+  std::vector<Ring> vres1(num);
+  std::vector<Ring> vres2(num);
+  std::vector<Ring> result(num);
 
-  jump_.jumpUpdate(id_, pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, -1), nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -1))].data());
-  jump_.jumpUpdate(pidFromOffset(id_, -1), id_, pidFromOffset(id_, 1), pidFromOffset(id_, -2), nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -2))].data());
-  jump_.jumpUpdate(pidFromOffset(id_, -2), pidFromOffset(id_, -1), id_, pidFromOffset(id_, -3), nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
-  jump_.jumpUpdate(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3), id_, nbytes, 
-                  recon_shares[idxFromSenderAndReceiver(id_, pidFromOffset(id_, -3))].data());
+  for(int i = 0; i<NUM_PARTIES; i++) {
+    int sender1 = pidFromOffset(i, 1);
+    int sender2 = pidFromOffset(i, 2);
+    int sender3 = pidFromOffset(i, 3);
+    int other1 = pidFromOffset(i, 4);
+    int other2 = pidFromOffset(i, 5);
+    int other3 = pidFromOffset(i, 6);
+    int receiver = i;
+    if(id_ == sender1 | id_ == sender2 | id_ == sender3 | receiver == id_) {
+      if(receiver == id_) {
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, nullptr);
+      }
+      else {
+        auto z_1 = elementwise_sum(recon_shares, upperTriangularToArray(receiver, other1), 
+                                                 upperTriangularToArray(receiver, other2),
+                                                 upperTriangularToArray(receiver, other3));
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, z_1.data());
+      }
+    }
+
+    sender1 = pidFromOffset(i, 4);
+    sender2 = pidFromOffset(i, 5);
+    sender3 = pidFromOffset(i, 6);
+    other1 = pidFromOffset(i, 1);
+    other2 = pidFromOffset(i, 2);
+    other3 = pidFromOffset(i, 3);
+    if(id_ == sender1 | id_ == sender2 | id_ == sender3 | receiver == id_) {
+      if(receiver == id_) {
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, nullptr);
+      }
+      else {
+        auto z_2 = elementwise_sum(recon_shares, upperTriangularToArray(receiver, other1), 
+                                                 upperTriangularToArray(receiver, other2),
+                                                 upperTriangularToArray(receiver, other3));
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, z_2.data());
+      }
+    }
+  }
   jump_.communicate(*network_, *tpool_);
 
   //reinterpret_cast 的作用是 对指针类型进行低级别的重新解释，即将原始指针类型强制转换为另一种不相关的指针类型（这里是 const Ring*），而无需修改底层数据。
-  const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());       
-  std::copy(miss_values, miss_values + num, vres.begin());
+  const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());
+  const auto* miss_values2 = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 4), pidFromOffset(id_, 5), pidFromOffset(id_, 6)).data());     
+  std::copy(miss_values1, miss_values1 + num, vres1.begin());
+  std::copy(miss_values2, miss_values2 + num, vres2.begin());
   for (size_t i = 0; i<num; i++) {
-    vres[i] = vres[i] + recon_shares[0][i] + recon_shares[1][i] + recon_shares[2][i] + recon_shares[3][i];
+    Ring temp = 0;
+    for(size_t j = 0; j<NUM_RSS; j++) {
+      temp += recon_shares[j][i];
+    }
+    result[i] = vres1[i] + vres2[i] + temp;
   }
   jump_.reset();
-  return vres;
+  return result;
 }
 
 void OfflineEvaluator::randomShare(RandGenPool& rgen,
@@ -66,17 +117,19 @@ void OfflineEvaluator::randomShare(RandGenPool& rgen,
 
 ReplicatedShare<Ring> OfflineEvaluator::jshShare(int id, RandGenPool& rgen, int i, int j, int k) {
   ReplicatedShare<Ring> result;
+  result.init_zero();
   // id是当前执行这个函数的参与方i，他需要获取{0,1,2,3,4}\{i}
   int idx = 0;
-  for (int pid = 0; pid < 5; ++pid) {
-    if (pid == id) { //他无法获取共享x_{id}这个数据
-      continue;
-    }
-    else {
-      //直接使用公共的随机数种子生成数据，可能不安全，但效率是一样的
-      rgen.self().random_data(&result[idx], sizeof(Ring));
-      result[idx] = pid;
-      idx++;
+  int temp;
+  for (size_t pid1 = 0; pid1 < NUM_PARTIES; ++pid1) {
+    for (size_t pid2 = pid1+1; pid2 < NUM_PARTIES; ++pid2) {
+      if (pid1 == id || pid2 == id) { //他无法获取共享x_{id}这个数据
+        rgen.self().random_data(&temp, sizeof(Ring));
+      }
+      else {
+        //直接使用公共的随机数种子生成数据，可能不安全，但效率是一样的
+        rgen.self().random_data(&temp, sizeof(Ring));
+      }
     }
   }
   return result;
@@ -84,9 +137,9 @@ ReplicatedShare<Ring> OfflineEvaluator::jshShare(int id, RandGenPool& rgen, int 
 
 std::vector<Ring> OfflineEvaluator::reconstruct(
     const std::vector<ReplicatedShare<Ring>>& shares) {
-  std::array<std::vector<Ring>, 4> recon_shares;
+  std::array<std::vector<Ring>, NUM_RSS> recon_shares;
   for (const auto& s : shares) {
-    for (size_t i = 0; i < 4; ++i) {
+    for (size_t i = 0; i < NUM_RSS; ++i) {
       recon_shares[i].push_back(s[i]);
     }
   }
@@ -96,15 +149,18 @@ std::vector<Ring> OfflineEvaluator::reconstruct(
 
 ReplicatedShare<Ring> OfflineEvaluator::randomShareWithParty(int id, RandGenPool& rgen) {
   ReplicatedShare<Ring> result;
-  // id是当前执行这个函数的参与方i，他需要获取{0,1,2,3,4}\{i}
   int idx = 0;
-  for (int pid = 0; pid < 5; ++pid) {
-    if (pid == id) { //他无法获取共享x_{id}这个数据
-      continue;
-    }
-    else {
-      //直接使用公共的随机数种子生成数据，可能不安全，但效率是一样的
-      rgen.getComplement(pid).random_data(&result[idx++], sizeof(Ring));
+  int temp;
+  for (size_t pid1 = 0; pid1 < NUM_PARTIES; ++pid1) {
+    for (size_t pid2 = pid1+1; pid2 < NUM_PARTIES; ++pid2) {
+      if (pid1 == id || pid2 == id) { //他无法获取共享x_{id}这个数据
+        rgen.all().random_data(&temp, sizeof(Ring));
+        result[upperTriangularToArray(pid1, pid2)] = 0;
+      }
+      else {
+        //直接使用公共的随机数种子生成数据，可能不安全，但效率是一样的
+        rgen.all().random_data(&result[upperTriangularToArray(pid1, pid2)], sizeof(Ring));
+      }
     }
   }
   return result;
@@ -113,21 +169,22 @@ ReplicatedShare<Ring> OfflineEvaluator::randomShareWithParty(int id, RandGenPool
 void OfflineEvaluator::randomShareWithParty(int id, int dealer,
                                             RandGenPool& rgen,
                                             ReplicatedShare<Ring>& share) {
-  // id是当前执行这个函数的参与方i，他需要获取{0,1,2,3,4}\{i}
-  int idx = 0;
-  for (int pid = 0; pid < 5; ++pid) {
-    if (pid == id) { //他无法获取共享x_{id}这个数据
-      continue;
-    }
-    else {
-      //如果碰到数据x_{dealer}，dealer是需要知道x_{dealer}的，所以用公共的随机数种子生成数据
-      if (pid == dealer) {
-        rgen.getComplement(id).random_data(&share[idx++], sizeof(Ring));
+  Ring temp;
+  for (int pid1 = 0; pid1 < NUM_PARTIES; ++pid1) {
+    for (int pid2 = pid1+1; pid2 < NUM_PARTIES; ++pid2) {
+      if (pid1 == id || pid2 == id) { //他无法获取共享x_{id}这个数据
+        rgen.all().random_data(&temp, sizeof(Ring));
+        share[upperTriangularToArray(pid1, pid2)] = 0;
       }
       else {
-        rgen.getComplement(pid).random_data(&share[idx++], sizeof(Ring));
+        //如果碰到数据x_{dealer}，dealer是需要知道x_{dealer}的，所以用公共的随机数种子生成数据
+        if (pid1 == dealer || pid2 == dealer) {
+          rgen.all().random_data(&share[upperTriangularToArray(pid1, pid2)], sizeof(Ring));
+        }
+        else {
+          rgen.all().random_data(&share[upperTriangularToArray(pid1, pid2)], sizeof(Ring));
+        }
       }
-      
     }
   }
 }
@@ -136,19 +193,18 @@ void OfflineEvaluator::randomShareWithParty(int id, int dealer,
 void OfflineEvaluator::randomShareWithParty(int id, RandGenPool& rgen,
                                             ReplicatedShare<Ring>& share,
                                             Ring& secret) {
-  // id是当前执行这个函数的参与方i，他需要获取{0,1,2,3,4}\{i}
-  int idx = 0;
-  secret = 0;
   Ring temp = 0;
-  for (int pid = 0; pid < 5; ++pid) {
-    if (pid == id) { //他无法获取共享x_i
-      rgen.getComplement(pid).random_data(&temp, sizeof(Ring));
-      secret += temp;
-    }
-    else {
-      rgen.getComplement(pid).random_data(&share[idx], sizeof(Ring));
-      secret += share[idx];
-      idx++;
+  secret = 0;
+  for (int pid1 = 0; pid1 < NUM_PARTIES; ++pid1) {
+    for (int pid2 = pid1+1; pid2 < NUM_PARTIES; ++pid2) {
+      if (pid1 == id || pid2 == id) { //他无法获取共享x_{id}这个数据
+        rgen.all().random_data(&temp, sizeof(Ring));
+        secret += temp;
+      }
+      else {
+        rgen.all().random_data(&share[upperTriangularToArray(pid1, pid2)], sizeof(Ring));
+        secret += share[upperTriangularToArray(pid1, pid2)];
+      }
     }
   }
 }
@@ -187,47 +243,117 @@ ReplicatedShare<Ring> OfflineEvaluator::randomShareWithParty_for_trun(int id, Ra
   return result;
 }
 
+// 自定义哈希函数 for std::tuple<int, int, int>
+struct TupleHash {
+    size_t operator()(const std::tuple<int, int, int>& key) const {
+        auto [i, j, k] = key;
+        // 简单的哈希组合（可以使用更复杂的哈希算法如 boost::hash_combine）
+        return std::hash<int>{}(i) ^ std::hash<int>{}(j) ^ std::hash<int>{}(k);
+    }
+};
+
 ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2) {
+  std::unordered_map<std::tuple<Ring, Ring, Ring>, Ring, TupleHash> Gamma_i_j_k_2_mapping;
   ReplicatedShare<Ring> mask_prod;
   mask_prod.init_zero();
-  
-  //①计算α_xy = α_x * α_y的共享，除了要接受消息，还要发送消息
-  for(int i = 0; i<5; i++) {
-    for (int j = i+1; j<5; j++) {
-      if(i == id_ || j == id_) {
-        //无法生成α_{xyij}，需要接受收消息，这种情况会发送四次
-        // Ring x_m;
-        auto [min, mid, max] = findRemainingNumbers(i, j);
-        jump_.jumpUpdate(min, mid, max, id_, (size_t) sizeof(Ring), nullptr);
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        if(i != id_ && j != id_ && k != id_) {
+          auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+          auto key = std::make_tuple(l,m,n);
+          if(id_ != o) {
+            if (Gamma_i_j_k_2_mapping.find(key) != Gamma_i_j_k_2_mapping.end()) {//如果这个key存在
+              Gamma_i_j_k_2_mapping[{l,m,n}] += mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(i, k)] + 
+                                                mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                                mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                                mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                                mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                                mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, k)];
+            }
+            else {
+              Gamma_i_j_k_2_mapping[{l,m,n}] = mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(i, k)] + 
+                                              mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                              mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                              mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                              mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                              mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, k)];
+            }
+          }
+        }
       }
-      else {
-        //发送消息
-        auto [min, mid, max] = sortThreeNumbers(id_, i, j); //这三个人可以计算的值有
-        auto [other1, other2] = findRemainingNumbers(min, mid, max); //一定有other1<ohter2
-        //计算α_{xy,ohter1,other2}
-        auto alpha_x_y_other1_other2 = mask_in1[idxFromSenderAndReceiver(id_, other1)] * mask_in2[idxFromSenderAndReceiver(id_, other2)]+
-                                        mask_in1[idxFromSenderAndReceiver(id_, other2)] * mask_in2[idxFromSenderAndReceiver(id_, other1)];
-        if (min == 0 && mid == 1 && max == 2) {
-          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 3)] * mask_in2[idxFromSenderAndReceiver(id_, 3)] + 
-                                      mask_in1[idxFromSenderAndReceiver(id_, 4)] * mask_in2[idxFromSenderAndReceiver(id_, 4)];
-        }
-        else if (min == 2 && mid == 3 && max == 4) {
-          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 0)] * mask_in2[idxFromSenderAndReceiver(id_, 0)] + 
-                                      mask_in1[idxFromSenderAndReceiver(id_, 1)] * mask_in2[idxFromSenderAndReceiver(id_, 1)];
-        }
-        else if (min == 0 && mid == 1 && max == 3) {
-          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 2)] * mask_in2[idxFromSenderAndReceiver(id_, 2)];
-        }
-        //然后把数据share出去
-        auto alpha_x_y_other1_other2_mask = jshShare(id_, rgen_, min, mid, max);
-        auto x_m = alpha_x_y_other1_other2 - (min+mid+max+other1);
-        alpha_x_y_other1_other2_mask[idxFromSenderAndReceiver(id_, other2)] = x_m;
+    }
+  }
+  //①计算α_xy = α_x * α_y的共享，除了要接受消息，还要发送消息
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+        if(i == id_ || j == id_ || k == id_) {
+          auto Gamma_i_j_k_1 = mask_in1[upperTriangularToArray(l, m)] * mask_in2[upperTriangularToArray(n, o)] + 
+                               mask_in1[upperTriangularToArray(l, n)] * mask_in2[upperTriangularToArray(m, o)] + 
+                               mask_in1[upperTriangularToArray(l, o)] * mask_in2[upperTriangularToArray(m, n)] + 
+                               mask_in1[upperTriangularToArray(m, n)] * mask_in2[upperTriangularToArray(l, o)] + 
+                               mask_in1[upperTriangularToArray(m, o)] * mask_in2[upperTriangularToArray(l, n)] + 
+                               mask_in1[upperTriangularToArray(n, o)] * mask_in2[upperTriangularToArray(l, m)];
 
-        //自己把最终结果加上
-        mask_prod += alpha_x_y_other1_other2_mask;
-        //按顺序排序，这样其他发送者的发送参数是一样的，接收者也用一样的接受参数接受数据
-        jump_.jumpUpdate(min, mid, max, other1, (size_t) sizeof(Ring), &x_m);
-        jump_.jumpUpdate(min, mid, max, other2, (size_t) sizeof(Ring), &x_m);
+          auto Gamma_i_j_k = Gamma_i_j_k_1;
+          if (Gamma_i_j_k_2_mapping.find({i,j,k}) != Gamma_i_j_k_2_mapping.end()) {
+            Gamma_i_j_k += Gamma_i_j_k_2_mapping[{i,j,k}];
+          }
+
+          if (i == 0 && j == 1 && k == 2) {
+            Gamma_i_j_k += mask_in1[upperTriangularToArray(3, 4)] * mask_in2[upperTriangularToArray(3, 4)] + 
+                          mask_in1[upperTriangularToArray(3, 5)] * mask_in2[upperTriangularToArray(3, 5)] +
+                          mask_in1[upperTriangularToArray(3, 6)] * mask_in2[upperTriangularToArray(3, 6)] +
+                          mask_in1[upperTriangularToArray(4, 5)] * mask_in2[upperTriangularToArray(4, 5)] +
+                          mask_in1[upperTriangularToArray(4, 6)] * mask_in2[upperTriangularToArray(4, 6)] +
+                          mask_in1[upperTriangularToArray(5, 6)] * mask_in2[upperTriangularToArray(5, 6)];
+          }
+          else if (i == 4 && j == 5 && k == 6) {
+            Gamma_i_j_k += mask_in1[upperTriangularToArray(0, 1)] * mask_in2[upperTriangularToArray(0, 1)] + 
+                          mask_in1[upperTriangularToArray(0, 2)] * mask_in2[upperTriangularToArray(0, 2)] +
+                          mask_in1[upperTriangularToArray(0, 3)] * mask_in2[upperTriangularToArray(0, 3)] +
+                          mask_in1[upperTriangularToArray(1, 2)] * mask_in2[upperTriangularToArray(1, 2)] +
+                          mask_in1[upperTriangularToArray(1, 3)] * mask_in2[upperTriangularToArray(1, 3)] +
+                          mask_in1[upperTriangularToArray(2, 3)] * mask_in2[upperTriangularToArray(2, 3)];
+          }
+          else if (i == 0 && j == 1 && k == 3) {
+            Gamma_i_j_k += mask_in1[upperTriangularToArray(2, 4)] * mask_in2[upperTriangularToArray(2, 4)] + 
+                          mask_in1[upperTriangularToArray(2, 5)] * mask_in2[upperTriangularToArray(2, 5)] +
+                          mask_in1[upperTriangularToArray(2, 6)] * mask_in2[upperTriangularToArray(2, 6)];
+          }
+          else if (i == 0 && j == 2 && k == 3) {
+            Gamma_i_j_k += mask_in1[upperTriangularToArray(1, 4)] * mask_in2[upperTriangularToArray(1, 4)] + 
+                          mask_in1[upperTriangularToArray(1, 5)] * mask_in2[upperTriangularToArray(1, 5)] +
+                          mask_in1[upperTriangularToArray(1, 6)] * mask_in2[upperTriangularToArray(1, 6)];
+          }
+          else if (i == 1 && j == 2 && k == 3) {
+            Gamma_i_j_k += mask_in1[upperTriangularToArray(0, 4)] * mask_in2[upperTriangularToArray(0, 4)] + 
+                          mask_in1[upperTriangularToArray(0, 5)] * mask_in2[upperTriangularToArray(0, 5)] +
+                          mask_in1[upperTriangularToArray(0, 6)] * mask_in2[upperTriangularToArray(0, 6)];
+          }
+
+          //然后把数据share出去
+          auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+          auto x_l_m = Gamma_i_j_k - Gamma_i_j_k_mask.sum();
+          Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = x_l_m; //i,j,k本地设置，而n,o需要接收消息设置，l,m不用设置
+
+          //自己把最终结果加上
+          mask_prod += Gamma_i_j_k_mask;
+
+          //按顺序排序，这样其他发送者的发送参数是一样的，接收者也用一样的接受参数接受数据
+          jump_.jumpUpdate(i, j, k, n, (size_t) sizeof(Ring), &x_l_m);
+          jump_.jumpUpdate(i, j, k, o, (size_t) sizeof(Ring), &x_l_m);
+          if(id_ == 0) {
+          }
+        }
+        else {
+          //接收消息, id_不属于i，j，k中的一个
+          if(n == id_ || o == id_) { //如果是参与方n, o，那么需要用通信协议来更新x_l_m
+            jump_.jumpUpdate(i, j, k, id_, (size_t) sizeof(Ring), nullptr);
+          }
+        }
       }
     }
   }
@@ -235,22 +361,25 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask(ReplicatedShare<Ring> 
   //通信得到数据
   jump_.communicate(*network_, *tpool_);
 
-  for(int i = 0; i<5; i++) {
-    for (int j = i+1; j<5; j++) {
-      if (i == id_ || j == id_) {
-        auto [min, mid, max] = findRemainingNumbers(i, j);
-        if(i == id_) { //如果是参与方l，那么需要用通信协议来更新x_m
-          // Ring x_m;
-          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
-          const Ring *x_m = reinterpret_cast<const Ring*>(jump_.getValues(min, mid, max).data());
-          alpha_x_y_i_j_mask[idxFromSenderAndReceiver(id_, j)] = *x_m; //j就对应x_m中的m
-          //自己吧最终结果加上
-          mask_prod += alpha_x_y_i_j_mask;
-        }
-        else if(j == id_) { //如果是参与方m，那么只需要得到x_i,x_j,x_k,x_l即可，这些通过随机生成已经获得了
-          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
-          //自己吧最终结果加上
-          mask_prod += alpha_x_y_i_j_mask;
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        if(i != id_ && j != id_ && k != id_) { //确保是接收方
+          auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+          if(n == id_ || o == id_) { //如果是参与方n, o，那么需要用通信协议来更新x_l_m
+            // Ring x_m;
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            const Ring *x_l_m = reinterpret_cast<const Ring*>(jump_.getValues(i, j, k).data());
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = *x_l_m; //j就对应x_m中的m
+            //自己吧最终结果加上
+            mask_prod += Gamma_i_j_k_mask;
+          }
+          else if(l == id_ || m == id_) { //如果是参与方l，m，那么直接把x_l_m设置为0即可
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = 0;
+            //自己吧最终结果加上
+            mask_prod += Gamma_i_j_k_mask;
+          }
         }
       }
     }
@@ -260,52 +389,118 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask(ReplicatedShare<Ring> 
 }
 
 ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec) {
+  std::unordered_map<std::tuple<Ring, Ring, Ring>, Ring, TupleHash> Gamma_i_j_k_2_mapping;
   ReplicatedShare<Ring> mask_prod;
   mask_prod.init_zero();
-  
-  //①计算α_xy = α_x * α_y的共享，除了要接受消息，还要发送消息
-  for(int i = 0; i<5; i++) {
-    for (int j = i+1; j<5; j++) {
-      if(i == id_ || j == id_) {
-        //无法生成α_{xyij}，需要接受收消息，这种情况会发送四次
-        // Ring x_m;
-        auto [min, mid, max] = findRemainingNumbers(i, j);
-        jump_.jumpUpdate(min, mid, max, id_, (size_t) sizeof(Ring), nullptr);
-      }
-      else {
-        //发送消息
-        auto [min, mid, max] = sortThreeNumbers(id_, i, j); //这三个人可以计算的值有
-        auto [other1, other2] = findRemainingNumbers(min, mid, max); //一定有other1<ohter2
-        //计算α_{xy,ohter1,other2}
-        Ring alpha_x_y_other1_other2 = 0;
-        for(int t = 0; t<mask_in1_vec.size(); t++) {
-          auto &mask_in1 = mask_in1_vec[t];
-          auto &mask_in2 = mask_in2_vec[t];
-          alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, other1)] * mask_in2[idxFromSenderAndReceiver(id_, other2)]+
-                                        mask_in1[idxFromSenderAndReceiver(id_, other2)] * mask_in2[idxFromSenderAndReceiver(id_, other1)];
-          if (min == 0 && mid == 1 && max == 2) {
-            alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 3)] * mask_in2[idxFromSenderAndReceiver(id_, 3)] + 
-                                        mask_in1[idxFromSenderAndReceiver(id_, 4)] * mask_in2[idxFromSenderAndReceiver(id_, 4)];
-          }
-          else if (min == 2 && mid == 3 && max == 4) {
-            alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 0)] * mask_in2[idxFromSenderAndReceiver(id_, 0)] + 
-                                        mask_in1[idxFromSenderAndReceiver(id_, 1)] * mask_in2[idxFromSenderAndReceiver(id_, 1)];
-          }
-          else if (min == 0 && mid == 1 && max == 3) {
-            alpha_x_y_other1_other2 += mask_in1[idxFromSenderAndReceiver(id_, 2)] * mask_in2[idxFromSenderAndReceiver(id_, 2)];
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        if(i != id_ && j != id_ && k != id_) {
+          auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+          auto key = std::make_tuple(l,m,n);
+          if(id_ != o) {
+            for(int t = 0; t<mask_in1_vec.size(); t++) {
+            auto &mask_in1 = mask_in1_vec[t];
+            auto &mask_in2 = mask_in2_vec[t];
+              if (Gamma_i_j_k_2_mapping.find(key) != Gamma_i_j_k_2_mapping.end()) {//如果这个key存在
+                
+                Gamma_i_j_k_2_mapping[{l,m,n}] += mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(i, k)] + 
+                                                  mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                                  mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                                  mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                                  mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                                  mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, k)];
+              }
+              else {
+                Gamma_i_j_k_2_mapping[{l,m,n}] = mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(i, k)] + 
+                                                mask_in1[upperTriangularToArray(i, j)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                                mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                                mask_in1[upperTriangularToArray(i, k)] * mask_in2[upperTriangularToArray(j, k)] + 
+                                                mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, j)] + 
+                                                mask_in1[upperTriangularToArray(j, k)] * mask_in2[upperTriangularToArray(i, k)];
+              }
+            }
           }
         }
-        
-        //然后把数据share出去
-        auto alpha_x_y_other1_other2_mask = jshShare(id_, rgen_, min, mid, max);
-        auto x_m = alpha_x_y_other1_other2 - (min+mid+max+other1);
-        alpha_x_y_other1_other2_mask[idxFromSenderAndReceiver(id_, other2)] = x_m;
+      }
+    }
+  }
+  // sleep(id_);
+  // std::cout<<"##############################id="<<id_<<"##############################"<<endl;
+  //①计算α_xy = α_x * α_y的共享，除了要接受消息，还要发送消息
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+        if(i == id_ || j == id_ || k == id_) {
+          Ring Gamma_i_j_k = 0;
+          for(int t = 0; t<mask_in1_vec.size(); t++) {
+            auto &mask_in1 = mask_in1_vec[t];
+            auto &mask_in2 = mask_in2_vec[t];
+            auto Gamma_i_j_k_1 = mask_in1[upperTriangularToArray(l, m)] * mask_in2[upperTriangularToArray(n, o)] + 
+                                mask_in1[upperTriangularToArray(l, n)] * mask_in2[upperTriangularToArray(m, o)] + 
+                                mask_in1[upperTriangularToArray(l, o)] * mask_in2[upperTriangularToArray(m, n)] + 
+                                mask_in1[upperTriangularToArray(m, n)] * mask_in2[upperTriangularToArray(l, o)] + 
+                                mask_in1[upperTriangularToArray(m, o)] * mask_in2[upperTriangularToArray(l, n)] + 
+                                mask_in1[upperTriangularToArray(n, o)] * mask_in2[upperTriangularToArray(l, m)];
 
-        //自己把最终结果加上
-        mask_prod += alpha_x_y_other1_other2_mask;
-        //按顺序排序，这样其他发送者的发送参数是一样的，接收者也用一样的接受参数接受数据
-        jump_.jumpUpdate(min, mid, max, other1, (size_t) sizeof(Ring), &x_m);
-        jump_.jumpUpdate(min, mid, max, other2, (size_t) sizeof(Ring), &x_m);
+            Gamma_i_j_k += Gamma_i_j_k_1;
+
+            if (i == 0 && j == 1 && k == 2) {
+              Gamma_i_j_k += mask_in1[upperTriangularToArray(3, 4)] * mask_in2[upperTriangularToArray(3, 4)] + 
+                            mask_in1[upperTriangularToArray(3, 5)] * mask_in2[upperTriangularToArray(3, 5)] +
+                            mask_in1[upperTriangularToArray(3, 6)] * mask_in2[upperTriangularToArray(3, 6)] +
+                            mask_in1[upperTriangularToArray(4, 5)] * mask_in2[upperTriangularToArray(4, 5)] +
+                            mask_in1[upperTriangularToArray(4, 6)] * mask_in2[upperTriangularToArray(4, 6)] +
+                            mask_in1[upperTriangularToArray(5, 6)] * mask_in2[upperTriangularToArray(5, 6)];
+            }
+            else if (i == 4 && j == 5 && k == 6) {
+              Gamma_i_j_k += mask_in1[upperTriangularToArray(0, 1)] * mask_in2[upperTriangularToArray(0, 1)] + 
+                            mask_in1[upperTriangularToArray(0, 2)] * mask_in2[upperTriangularToArray(0, 2)] +
+                            mask_in1[upperTriangularToArray(0, 3)] * mask_in2[upperTriangularToArray(0, 3)] +
+                            mask_in1[upperTriangularToArray(1, 2)] * mask_in2[upperTriangularToArray(1, 2)] +
+                            mask_in1[upperTriangularToArray(1, 3)] * mask_in2[upperTriangularToArray(1, 3)] +
+                            mask_in1[upperTriangularToArray(2, 3)] * mask_in2[upperTriangularToArray(2, 3)];
+            }
+            else if (i == 0 && j == 1 && k == 3) {
+              Gamma_i_j_k += mask_in1[upperTriangularToArray(2, 4)] * mask_in2[upperTriangularToArray(2, 4)] + 
+                            mask_in1[upperTriangularToArray(2, 5)] * mask_in2[upperTriangularToArray(2, 5)] +
+                            mask_in1[upperTriangularToArray(2, 6)] * mask_in2[upperTriangularToArray(2, 6)];
+            }
+            else if (i == 0 && j == 2 && k == 3) {
+              Gamma_i_j_k += mask_in1[upperTriangularToArray(1, 4)] * mask_in2[upperTriangularToArray(1, 4)] + 
+                            mask_in1[upperTriangularToArray(1, 5)] * mask_in2[upperTriangularToArray(1, 5)] +
+                            mask_in1[upperTriangularToArray(1, 6)] * mask_in2[upperTriangularToArray(1, 6)];
+            }
+            else if (i == 1 && j == 2 && k == 3) {
+              Gamma_i_j_k += mask_in1[upperTriangularToArray(0, 4)] * mask_in2[upperTriangularToArray(0, 4)] + 
+                            mask_in1[upperTriangularToArray(0, 5)] * mask_in2[upperTriangularToArray(0, 5)] +
+                            mask_in1[upperTriangularToArray(0, 6)] * mask_in2[upperTriangularToArray(0, 6)];
+            }
+          }
+          if (Gamma_i_j_k_2_mapping.find({i,j,k}) != Gamma_i_j_k_2_mapping.end()) {
+            Gamma_i_j_k += Gamma_i_j_k_2_mapping[{i,j,k}];
+          }
+          //然后把数据share出去
+          auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+          auto x_l_m = Gamma_i_j_k - Gamma_i_j_k_mask.sum();
+          Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = x_l_m; //i,j,k本地设置，而n,o需要接收消息设置，l,m不用设置
+
+          //自己把最终结果加上
+          mask_prod += Gamma_i_j_k_mask;
+
+          //按顺序排序，这样其他发送者的发送参数是一样的，接收者也用一样的接受参数接受数据
+          jump_.jumpUpdate(i, j, k, n, (size_t) sizeof(Ring), &x_l_m);
+          jump_.jumpUpdate(i, j, k, o, (size_t) sizeof(Ring), &x_l_m);
+          if(id_ == 0) {
+          }
+        }
+        else {
+          //接收消息, id_不属于i，j，k中的一个
+          if(n == id_ || o == id_) { //如果是参与方n, o，那么需要用通信协议来更新x_l_m
+            jump_.jumpUpdate(i, j, k, id_, (size_t) sizeof(Ring), nullptr);
+          }
+        }
       }
     }
   }
@@ -313,22 +508,25 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot(vector<ReplicatedS
   //通信得到数据
   jump_.communicate(*network_, *tpool_);
 
-  for(int i = 0; i<5; i++) {
-    for (int j = i+1; j<5; j++) {
-      if (i == id_ || j == id_) {
-        auto [min, mid, max] = findRemainingNumbers(i, j);
-        if(i == id_) { //如果是参与方l，那么需要用通信协议来更新x_m
-          // Ring x_m;
-          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
-          const Ring *x_m = reinterpret_cast<const Ring*>(jump_.getValues(min, mid, max).data());
-          alpha_x_y_i_j_mask[idxFromSenderAndReceiver(id_, j)] = *x_m; //j就对应x_m中的m
-          //自己吧最终结果加上
-          mask_prod += alpha_x_y_i_j_mask;
-        }
-        else if(j == id_) { //如果是参与方m，那么只需要得到x_i,x_j,x_k,x_l即可，这些通过随机生成已经获得了
-          auto alpha_x_y_i_j_mask = jshShare(id_, rgen_, min, mid, max);
-          //自己吧最终结果加上
-          mask_prod += alpha_x_y_i_j_mask;
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        if(i != id_ && j != id_ && k != id_) { //确保是接收方
+          auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+          if(n == id_ || o == id_) { //如果是参与方n, o，那么需要用通信协议来更新x_l_m
+            // Ring x_m;
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            const Ring *x_l_m = reinterpret_cast<const Ring*>(jump_.getValues(i, j, k).data());
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = *x_l_m; //j就对应x_m中的m
+            //自己吧最终结果加上
+            mask_prod += Gamma_i_j_k_mask;
+          }
+          else if(l == id_ || m == id_) { //如果是参与方l，m，那么直接把x_l_m设置为0即可
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = 0;
+            //自己吧最终结果加上
+            mask_prod += Gamma_i_j_k_mask;
+          }
         }
       }
     }
@@ -336,7 +534,6 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot(vector<ReplicatedS
   jump_.reset();
   return mask_prod;
 }
-
 
 vector<ReplicatedShare<Ring>> OfflineEvaluator::comute_random_r_every_bit_sharing(int id, ReplicatedShare<Ring> r_1_mask,
                                                                           ReplicatedShare<Ring> r_2_mask,
@@ -409,71 +606,6 @@ vector<ReplicatedShare<Ring>> OfflineEvaluator::comute_random_r_every_bit_sharin
   return r_1_xor_r_2_xor_r_3_mask;
 }
 
-void OfflineEvaluator::setWireMasks(
-    const std::unordered_map<utils::wire_t, int>& input_pid_map) {
-  for (const auto& level : circ_.gates_by_level) {
-    for (const auto& gate : level) {
-      switch (gate->type) {
-        case utils::GateType::kInp: {
-          auto pregate = std::make_unique<PreprocInput<Ring>>();
-
-          auto pid = input_pid_map.at(gate->out);
-          pregate->pid = pid;
-          if (pid == id_) {
-            randomShareWithParty(id_, rgen_, pregate->mask,
-                                 pregate->mask_value); //如果是数据的拥有者，他是可以获得α的累计值的，以此计算β
-          } else {
-            randomShareWithParty(id_, pid, rgen_, pregate->mask);
-          }
-          preproc_.gates[gate->out] = std::move(pregate);
-          break;
-        }
-
-        case utils::GateType::kMul: {
-          for(int i = 0; i<5; i++) {
-            for(int j = i+1; j<5; j++) {
-              if (i == id_ || j == id_) {
-                continue;
-              }
-              else {
-                auto alpha_x_y_i_j = 0;
-                // alpha_x_y_i_j += 
-              }
-
-            }
-          }
-          preproc_.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>();
-          randomShare(rgen_, preproc_.gates[gate->out]->mask);
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          mult_gates_.push_back(*g);
-          break;
-        }
-
-        case utils::GateType::kAdd: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc_.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc_.gates[g->in2]->mask;
-          preproc_.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 + mask_in2);
-          break;
-        }
-
-        case utils::GateType::kSub: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc_.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc_.gates[g->in2]->mask;
-          preproc_.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 - mask_in2);
-          break;
-        }
-
-        default:
-          break;
-      }
-    }
-  }
-}
-
 PreprocCircuit<Ring> OfflineEvaluator::getPreproc() {
   return std::move(preproc_);
 }
@@ -481,22 +613,8 @@ PreprocCircuit<Ring> OfflineEvaluator::getPreproc() {
 PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& circ,
     const std::unordered_map<utils::wire_t, int>& input_pid_map,
     size_t security_param, int pid, emp::PRG& prg) {
-  // setWireMasks(input_pid_map);
   offline_setwire(circ, input_pid_map, security_param, id_, prg);
   return std::move(preproc_);
-}
-
-emp::block OfflineEvaluator::commonCoinKey() {
-  // Generate random sharing of two 64 bit values and reconstruct to get 128
-  // bit key.
-  std::vector<ReplicatedShare<Ring>> key_shares(2);
-  randomShare(rgen_, key_shares[0]);
-  randomShare(rgen_, key_shares[1]);
-
-  OnlineEvaluator oeval(id_, network_, PreprocCircuit<Ring>(),
-                        utils::LevelOrderedCircuit(), security_param_, tpool_);
-  auto key = oeval.reconstruct(key_shares);
-  return emp::makeBlock(key[0], key[1]);
 }
 
 PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
@@ -505,8 +623,6 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
     size_t security_param, int pid, emp::PRG& prg) {
   PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
   jump_.reset();
-  auto msb_circ =
-      utils::Circuit<BoolRing>::generatePPAMSB().orderGatesByLevel();
   std::vector<DummyShare<Ring>> wires(circ.num_gates);
   for (const auto& level : circ.gates_by_level) {
     for (const auto& gate : level) {
@@ -566,10 +682,10 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
           const auto& mask_in1 = preproc.gates[g->in1]->mask;
           const auto& mask_in2 = preproc.gates[g->in2]->mask;
+
           ReplicatedShare<Ring> mask_prod = compute_prod_mask(mask_in1, mask_in2);
           preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
-              randomShareWithParty(id_, rgen_), //生成α_z的共享
-              mask_prod); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+              randomShareWithParty(id_, rgen_), mask_prod);
           break;
         }
 
@@ -631,81 +747,6 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
 
         //要判断一个数x的正负
         case utils::GateType::kMsb: {
-          const auto* msb_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          //先乘一个-1
-          auto alpha = 
-              -1 * wires[msb_g->in].secret();  // Removed multiplication by -1
-          auto alpha_bits = bitDecompose(alpha);
-
-          DummyShare<BoolRing> zero_share;
-          std::fill(zero_share.share_elements.begin(),
-                    zero_share.share_elements.end(), 0); //全部填0
-
-          //msb_circ为一个计算最高有效位的电路,为这个新电路进行预处理
-          std::vector<preprocg_ptr_t<BoolRing>> msb_gates(msb_circ.num_gates); // 新电路的，用来保存预计算好的RSS共享
-          std::vector<DummyShare<BoolRing>> msb_wires(msb_circ.num_gates); // 新电路的wire
-
-          size_t inp_counter = 0;
-          //遍历电路msb_circ
-          for (const auto& msb_level : msb_circ.gates_by_level) {
-            for (const auto& msb_gate : msb_level) {
-              switch (msb_gate->type) {
-                case utils::GateType::kInp: {
-                  auto mask = zero_share;
-                  if (inp_counter < 64) { //小于64的都是输入
-                    mask = DummyShare<BoolRing>(alpha_bits[inp_counter], prg); //把第inp_counter个比特，共享成5个随机数的和
-                  }
-                  msb_wires[msb_gate->out] = mask; //第i bit的5个共享值
-                  msb_gates[msb_gate->out] = std::make_unique<PreprocGate<BoolRing>>(mask.getRSS(pid)); //4个共享值，作为输入保存在一个门中，即msb_gates
-                  inp_counter++;
-                  break;
-                }
-
-                case utils::GateType::kAdd: {
-                  const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
-                  msb_wires[g->out] = msb_wires[g->in1] + msb_wires[g->in2];
-                  msb_gates[g->out] = std::make_unique<PreprocGate<BoolRing>>(
-                      msb_wires[g->out].getRSS(pid));
-                  break;
-                }
-
-                case utils::GateType::kMul: {
-                  const auto* g = static_cast<utils::FIn2Gate*>(msb_gate.get());
-                  msb_wires[g->out].randomize(prg);
-                  BoolRing prod = msb_wires[g->in1].secret() * msb_wires[g->in2].secret();
-                  auto prod_share = DummyShare<BoolRing>(prod, prg);
-
-                  msb_gates[g->out] =
-                      std::make_unique<PreprocMultGate<BoolRing>>(
-                          msb_wires[g->out].getRSS(pid),
-                          prod_share.getRSS(pid));
-                  break;
-                }
-
-                default: {
-                  break;
-                }
-              }
-            }
-          }
-
-          const auto& out_mask = msb_wires[msb_circ.outputs[0]]; //一个MSB只有一个输出，out_mask代表输出线的掩码
-
-          Ring alpha_msb = out_mask.secret().val();//Σα
-          DummyShare<Ring> mask_msb(alpha_msb, prg);
-
-          DummyShare<Ring> mask_w;
-          mask_w.randomize(prg);
-
-          Ring alpha_w, alpha_btoa;
-          alpha_w = mask_w.secret();
-
-          wires[msb_g->out] =
-              static_cast<Ring>(-1) * mask_msb + static_cast<Ring>(-2) * mask_w;
-
-          preproc.gates[msb_g->out] = std::make_unique<PreprocMsbGate<Ring>>(
-              wires[msb_g->out].getRSS(pid), std::move(msb_gates), //msb_gates尤为重要，他代表预计算好的MSB所有子门的预计算结果，有443个bool门
-              mask_msb.getRSS(pid), mask_w.getRSS(pid));
           break;
         }
 

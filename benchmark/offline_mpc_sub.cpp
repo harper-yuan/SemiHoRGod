@@ -67,11 +67,11 @@ void benchmark(const bpo::variables_map& opts) {
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
 
-  std::shared_ptr<io::NetIOMP<NP>> network1 = nullptr;
-  std::shared_ptr<io::NetIOMP<NP>> network2 = nullptr;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1 = nullptr;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network2 = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network1 = std::make_shared<io::NetIOMP<NP>>(pid, port, nullptr, true);
-    network2 = std::make_shared<io::NetIOMP<NP>>(pid, port + 100, nullptr, true);
+    network1 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, nullptr, true);
+    network2 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -83,15 +83,15 @@ void benchmark(const bpo::variables_map& opts) {
     fnet.close();
 
     std::vector<std::string> ipaddress(5);
-    std::array<char*, NP> ip{};
-    for (size_t i = 0; i < NP; ++i) {
+    std::array<char*, NUM_PARTIES> ip{};
+    for (size_t i = 0; i < NUM_PARTIES; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
 
-    network1 = std::make_shared<io::NetIOMP<NP>>(pid, port, ip.data(), false);
+    network1 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
     network2 =
-        std::make_shared<io::NetIOMP<NP>>(pid, port + 100, ip.data(), false);
+        std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, ip.data(), false);
   }
 
   json output_data;
@@ -134,11 +134,6 @@ void benchmark(const bpo::variables_map& opts) {
     nlohmann::json rbench;
     emp::PRG prg(&seed, 0);
     BENCHMARK(rbench, "offline_setwire", eval.offline_setwire, circ, input_pid_map, security_param, pid, prg);
-    // BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
-    // BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
-    // BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);
-    // BENCHMARK(rbench, "c_terms", eval.computeCCrossTerms);
-    // BENCHMARK(rbench, "combine_cross_terms", eval.combineCrossTerms);
 
     std::cout << "--- Repetition " << r + 1 << " ---\n";
     for (const auto& [key, value] : rbench.items()) {

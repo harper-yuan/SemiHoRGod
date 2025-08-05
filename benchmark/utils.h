@@ -5,8 +5,7 @@
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <string>
-
-
+#include <SemiHoRGod/types.h>
 struct TimePoint {
   using timepoint_t = std::chrono::high_resolution_clock::time_point;
   using timeunit_t = std::chrono::duration<double, std::milli>;
@@ -18,10 +17,10 @@ struct TimePoint {
 };
 
 struct CommPoint {
-  std::array<uint64_t, NP> stats;
+  std::array<uint64_t, NUM_PARTIES> stats;
 
-  explicit CommPoint(io::NetIOMP<NP>& network);
-  std::array<uint64_t, NP> operator-(const CommPoint& rhs) const;
+  explicit CommPoint(io::NetIOMP<NUM_PARTIES>& network);
+  std::array<uint64_t, NUM_PARTIES> operator-(const CommPoint& rhs) const;
 };
 
 class StatsPoint {
@@ -29,7 +28,7 @@ class StatsPoint {
   CommPoint cpoint_;
 
  public:
-  explicit StatsPoint(io::NetIOMP<NP>& network);
+  explicit StatsPoint(io::NetIOMP<NUM_PARTIES>& network);
   nlohmann::json operator-(const StatsPoint& rhs);
 };
 

@@ -23,6 +23,8 @@ int pidFromOffset(int id, int offset);
 std::tuple<int, int, int> sortThreeNumbers(int a, int b, int c);
 std::tuple<int, int> findRemainingNumbers(int min, int mid, int max);
 std::tuple<int, int, int> findRemainingNumbers(int min, int max);
+std::tuple<int, int, int, int> findRemainingNumbers_7PC(int i, int j, int k);
+std::tuple<int, int, int> findRemainingNumbers_7PC(int i, int j, int k, int id);
 std::tuple<int, int> findOtherSenders(int min, int mid, int max, int id_);
 bool isEqual(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b);
 int offsetFromPid(int id, int pid);

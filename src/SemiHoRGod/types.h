@@ -5,12 +5,11 @@
 
 #define NUM_RSS 21
 #define NUM_DSS 21
-#define NP 7
+#define NUM_PARTIES 7
 namespace SemiHoRGod {
 using Ring = uint64_t;
 constexpr uint64_t FRACTION = 16;
 constexpr size_t N = 64; //bit size of Ring, 64 bits
-
 
 class BoolRing {
   bool val_;

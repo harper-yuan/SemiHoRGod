@@ -33,9 +33,9 @@ void benchmark(const bpo::variables_map& opts) {
   auto neural_network = opts["neural-network"].as<std::string>();
   auto batch_size = opts["batch-size"].as<size_t>();
 
-  std::shared_ptr<io::NetIOMP<NP>> network = nullptr;
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network = std::make_shared<io::NetIOMP<NP>>(pid, port, nullptr, true);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -47,13 +47,13 @@ void benchmark(const bpo::variables_map& opts) {
     fnet.close();
 
     std::vector<std::string> ipaddress(4);
-    std::array<char*, NP> ip{};
-    for (size_t i = 0; i < 5; ++i) {
+    std::array<char*, NUM_PARTIES> ip{};
+    for (size_t i = 0; i < NUM_PARTIES; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
       ip[i] = ipaddress[i].data();
     }
 
-    network = std::make_shared<io::NetIOMP<NP>>(pid, port, ip.data(), false);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
   }
 
   json output_data;
@@ -99,7 +99,7 @@ void benchmark(const bpo::variables_map& opts) {
     std::cout << "--- Repetition " << r + 1 << " ---\n";
     OfflineEvaluator offline_eval(pid, network, nullptr, circ, security_param, threads);
     // auto preproc =
-    //     OfflineEvaluator::dummy(circ, iNP>ut_pid_map, security_param, pid, prg);
+    //     OfflineEvaluator::dummy(circ, iNUM_PARTIES>ut_pid_map, security_param, pid, prg);
 
     // OnlineEvaluator eval(pid, network, std::move(preproc), circ, security_param,
     //                      threads, seed);
@@ -154,7 +154,7 @@ bpo::options_description programOptions() {
   bpo::options_description desc("Following options are supported by config file too.");
   desc.add_options()
     ("neural-network,n", bpo::value<std::string>()->required(), "Network name (fcn | lenet).")
-    ("batch-size", bpo::value<size_t>()->default_value(1), "INP>ut batch size.")
+    ("batch-size", bpo::value<size_t>()->default_value(1), "INUM_PARTIES>ut batch size.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
     ("threads,t", bpo::value<size_t>()->default_value(1), "Number of threads (recommended 6).")

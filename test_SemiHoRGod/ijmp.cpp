@@ -14,13 +14,13 @@ BOOST_AUTO_TEST_SUITE(ijmp_provider)
 
 // BOOST_AUTO_TEST_CASE(uint64_t_test) {
 //   std::string message("A test string.");
-//   // std::vector<uint64_t> input = {1,2,3,4,NP };
+//   // std::vector<uint64_t> input = {1,2,3,4,NUM_PARTIES };
 
 //   // std::future<void>作用：表示一个异步操作的结果（来自 std::async、std::promise 或线程池任务）。
 //   std::vector<std::future<void>> parties;
-//   for (int i = 0; i < NP ; ++i) {
+//   for (int i = 0; i < NUM_PARTIES ; ++i) {
 //     parties.push_back(std::async(std::launch::async, [&, i]() {
-//       io::NetIOMP<NP > network(i, 10000, nullptr, true);
+//       io::NetIOMP<NUM_PARTIES > network(i, 10000, nullptr, true);
 //       ImprovedJmp jump(i);
 //       ThreadPool tpool(1);
 
@@ -56,9 +56,9 @@ BOOST_AUTO_TEST_CASE(receiver_offset_2) {
 
   // std::future<void>作用：表示一个异步操作的结果（来自 std::async、std::promise 或线程池任务）。
   std::vector<std::future<void>> parties;
-  for (int i = 0; i < NP ; ++i) {
+  for (int i = 0; i < NUM_PARTIES ; ++i) {
     parties.push_back(std::async(std::launch::async, [&, i]() {
-      io::NetIOMP<NP > network(i, 10000, nullptr, true);
+      io::NetIOMP<NUM_PARTIES > network(i, 10000, nullptr, true);
       ImprovedJmp jump(i);
       ThreadPool tpool(1);
 
@@ -151,16 +151,16 @@ BOOST_AUTO_TEST_CASE(all_combinations) {
   // std::vector<uint8_t> input(message.begin(), message.end());
 
   std::vector<std::future<void>> parties;
-  for (int i = 0; i < NP ; ++i) {
+  for (int i = 0; i < NUM_PARTIES ; ++i) {
     parties.push_back(std::async(std::launch::async, [&, i]() {
-      io::NetIOMP<NP > network(i, 10000, nullptr, true);
+      io::NetIOMP<NUM_PARTIES > network(i, 10000, nullptr, true);
       ImprovedJmp jump(i);
       ThreadPool tpool(1);
 
-      for (int sender1 = 0; sender1 < NP ; ++sender1) {
-        for (int sender2 = sender1 + 1; sender2 < NP ; ++sender2) {
-            for (int sender3 = sender2 + 1; sender2 < NP ; ++sender2) {
-                for (int receiver = 0; receiver < NP ; ++receiver) {
+      for (int sender1 = 0; sender1 < NUM_PARTIES ; ++sender1) {
+        for (int sender2 = sender1 + 1; sender2 < NUM_PARTIES ; ++sender2) {
+            for (int sender3 = sender2 + 1; sender2 < NUM_PARTIES ; ++sender2) {
+                for (int receiver = 0; receiver < NUM_PARTIES ; ++receiver) {
                     if (receiver == sender1 || receiver == sender2 || receiver == sender3) {
                     continue;
                     }
@@ -174,9 +174,9 @@ BOOST_AUTO_TEST_CASE(all_combinations) {
 
       jump.communicate(network, tpool);
 
-      for (int sender1 = 0; sender1 < NP ; ++sender1) {
-        for (int sender2 = sender1 + 1; sender2 < NP ; ++sender2) {
-            for (int sender3 = sender2 + 1; sender2 < NP ; ++sender2) {
+      for (int sender1 = 0; sender1 < NUM_PARTIES ; ++sender1) {
+        for (int sender2 = sender1 + 1; sender2 < NUM_PARTIES ; ++sender2) {
+            for (int sender3 = sender2 + 1; sender2 < NUM_PARTIES ; ++sender2) {
                 if (i == sender1 || i == sender2 || i == sender3) {
                     continue;
                 }

@@ -3,7 +3,7 @@
 using namespace SemiHoRGod;
 namespace SemiHoRGod {
 OnlineEvaluator::OnlineEvaluator(int id,  //复制创建评估器
-                                 std::shared_ptr<io::NetIOMP<NP>> network,
+                                 std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network,
                                  PreprocCircuit<Ring> preproc,
                                  utils::LevelOrderedCircuit circ,
                                  int security_param, int threads, int seed)
@@ -21,7 +21,7 @@ OnlineEvaluator::OnlineEvaluator(int id,  //复制创建评估器
 }
 
 OnlineEvaluator::OnlineEvaluator(int id,
-                                 std::shared_ptr<io::NetIOMP<NP>> network,
+                                 std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network,
                                  PreprocCircuit<Ring> preproc,
                                  utils::LevelOrderedCircuit circ,
                                  int security_param,
@@ -40,7 +40,7 @@ void OnlineEvaluator::setInputs(
     const std::unordered_map<utils::wire_t, Ring>& inputs) { //映射：从wire_id -> values
   // Input gates have depth 0.
   std::vector<Ring> my_betas;
-  std::vector<size_t> num_inp_pid(NP, 0);
+  std::vector<size_t> num_inp_pid(NUM_PARTIES, 0);
 
   for (auto& g : circ_.gates_by_level[0]) { //每一层都是一个门数组，g是一个门，std::vector<std::vector<gate_ptr_t>> gates_by_level
     if (g->type == utils::GateType::kInp) {
@@ -57,7 +57,7 @@ void OnlineEvaluator::setInputs(
   //下面作为数据的拥有者，需要发送数据给其他4个参与方，发送的数据就是my_betas。同时还需要从另外四个参与方接收数据
   std::vector<std::vector<Ring>> all_recv_betas; // 保存所有 prev_beta 的向量
   // 为每个 recv_pid 初始化 recv_beta
-  for (int recv_pid = 0; recv_pid < NP; ++recv_pid) {
+  for (int recv_pid = 0; recv_pid < NUM_PARTIES; ++recv_pid) {
       // 根据 num_inp_pid[recv_pid] 初始化 recv_beta
       std::vector<Ring> recv_beta(num_inp_pid[recv_pid]);
       
@@ -69,7 +69,7 @@ void OnlineEvaluator::setInputs(
   }
 
   
-  for (int recv_pid = 0; recv_pid < NP; ++recv_pid) {
+  for (int recv_pid = 0; recv_pid < NUM_PARTIES; ++recv_pid) {
     std::vector<std::future<void>> res;
     // Send betas to other 4 parties.
     if (recv_pid != id_) {
@@ -97,7 +97,7 @@ void OnlineEvaluator::setInputs(
     }
   }
 
-  std::vector<size_t> pid_inp_idx(NP, 0);
+  std::vector<size_t> pid_inp_idx(NUM_PARTIES, 0);
   for (auto& g : circ_.gates_by_level[0]) {
     if (g->type == utils::GateType::kInp) { //如果是输入门，那么设置输出为输入值
       auto* pre_input =
@@ -199,7 +199,7 @@ std::array<std::vector<Ring>, NUM_RSS> OnlineEvaluator::msbEvaluate(
   return outputs;
 }
 
-std::vector<Ring> elementwise_sum(const std::array<std::vector<Ring>, NUM_RSS>& recon_shares, int i, int j, int k) {
+std::vector<Ring> OnlineEvaluator::elementwise_sum(const std::array<std::vector<Ring>, NUM_RSS>& recon_shares, int i, int j, int k) {
     // 检查向量是否非空且大小一致
     if (recon_shares[i].empty()) return {};
     size_t size = recon_shares[i].size();
@@ -226,7 +226,7 @@ std::vector<Ring> OnlineEvaluator::reconstruct(
   std::vector<Ring> vres2(num);
   std::vector<Ring> result(num);
 
-  for(int i = 0; i<NP; i++) {
+  for(int i = 0; i<NUM_PARTIES; i++) {
     int sender1 = pidFromOffset(i, 1);
     int sender2 = pidFromOffset(i, 2);
     int sender3 = pidFromOffset(i, 3);
@@ -627,7 +627,7 @@ BoolEvaluator::BoolEvaluator(int my_id,
 
 std::vector<BoolRing> BoolEvaluator::reconstruct(
     int id, const std::array<std::vector<BoolRing>, NUM_RSS>& recon_shares,
-    io::NetIOMP<NP>& network, ImprovedJmp& jump, ThreadPool& tpool) {
+    io::NetIOMP<NUM_PARTIES>& network, ImprovedJmp& jump, ThreadPool& tpool) {
   size_t num = recon_shares[0].size(); //看看有多少个bit
 
   std::array<std::vector<uint8_t>, NUM_RSS> packed_recon_shares;
@@ -663,7 +663,7 @@ std::vector<BoolRing> BoolEvaluator::reconstruct(
   return vres;
 }
 
-void BoolEvaluator::evaluateGatesAtDepth(size_t depth, io::NetIOMP<NP>& network,
+void BoolEvaluator::evaluateGatesAtDepth(size_t depth, io::NetIOMP<NUM_PARTIES>& network,
                                          ImprovedJmp& jump,
                                          ThreadPool& tpool) {
   std::array<std::vector<BoolRing>, NUM_RSS> recon_shares;
@@ -740,14 +740,14 @@ void BoolEvaluator::evaluateGatesAtDepth(size_t depth, io::NetIOMP<NP>& network,
   }
 }
 
-void BoolEvaluator::evaluateAllLevels(io::NetIOMP<NP>& network,
+void BoolEvaluator::evaluateAllLevels(io::NetIOMP<NUM_PARTIES>& network,
                                       ImprovedJmp& jump, ThreadPool& tpool) {
   for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
     evaluateGatesAtDepth(i, network, jump, tpool);
   }
 }
 
-std::vector<std::vector<BoolRing>> BoolEvaluator::getOutputShares(io::NetIOMP<NP>& network,
+std::vector<std::vector<BoolRing>> BoolEvaluator::getOutputShares(io::NetIOMP<NUM_PARTIES>& network,
                                       ImprovedJmp& jump, ThreadPool& tpool) {
   std::vector<std::vector<BoolRing>> outputs(vwires.size(), std::vector<BoolRing>(circ.outputs.size()));
   //circ是MSB形成的bool环

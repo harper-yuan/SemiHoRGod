@@ -5,4 +5,6 @@ args=${@:2}
     ($1 -p 1 --localhost $args) >/dev/null & \
     ($1 -p 2 --localhost $args) >/dev/null & \
     ($1 -p 3 --localhost $args) >/dev/null & \
-    ($1 -p 4 --localhost $args)
+    ($1 -p 4 --localhost $args) >/dev/null & \
+    ($1 -p 5 --localhost $args) >/dev/null & \
+    ($1 -p 6 --localhost $args)

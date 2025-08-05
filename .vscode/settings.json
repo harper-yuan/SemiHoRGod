@@ -74,6 +74,7 @@
         "valarray": "cpp",
         "variant": "cpp",
         "bit": "cpp",
-        "span": "cpp"
+        "span": "cpp",
+        "span_ext": "cpp"
     }
 }
