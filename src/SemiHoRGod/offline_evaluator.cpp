@@ -209,37 +209,23 @@ void OfflineEvaluator::randomShareWithParty(int id, RandGenPool& rgen,
   }
 }
 
-ReplicatedShare<Ring> OfflineEvaluator::randomShareWithParty_for_trun(int id, RandGenPool& rgen, int number_random_id) {
-  ReplicatedShare<Ring> result;
-  result.init_zero();
-  if(number_random_id == 0) { //for r1
-    if(id == 0) {
-      return result;
-    }
-    else{
-      //参与方0没有这个随机数种子
-      rgen.getComplement(0).random_data(&result[idxFromSenderAndReceiver(id, 0)], sizeof(Ring));
-    }
-  }
-  else if(number_random_id == 1) { //for r2
-    if(id == 1) {
-      return result;
-    }
-    else{
-      //参与方1没有这个随机数种子
-      rgen.getComplement(1).random_data(&result[idxFromSenderAndReceiver(id, 1)], sizeof(Ring));
-    }
-  }
-  else if(number_random_id == 2) { //for r3
-    if(id == 2) {
-      return result;
-    }
-    else{
-      // 参与方2没有这个随机数种子
-      rgen.getComplement(2).random_data(&result[idxFromSenderAndReceiver(id, 2)], sizeof(Ring));
-    }
-  }
+std::vector<ReplicatedShare<Ring>> OfflineEvaluator::randomShareWithParty_for_trun(int id, RandGenPool& rgen, std::vector<std::pair<int, int>> indices) {
+  std::vector<ReplicatedShare<Ring>> result;
+  for(auto pair : indices) {
+    ReplicatedShare<Ring> result_temp;
+    Ring temp;
+    result_temp.init_zero();
+    auto index1 = std::get<0>(pair);
+    auto index2 = std::get<1>(pair);
 
+    if(index1 == id || index2 == id) { //如果是id是{u,v}，那么共享被设置为0
+      rgen.all().random_data(&temp, sizeof(Ring));
+    }
+    else {
+      rgen.all().random_data(&result_temp[upperTriangularToArray(index1, index2)], sizeof(Ring));
+    }
+    result.push_back(result_temp);
+  }
   return result;
 }
 
@@ -535,75 +521,74 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot(vector<ReplicatedS
   return mask_prod;
 }
 
-vector<ReplicatedShare<Ring>> OfflineEvaluator::comute_random_r_every_bit_sharing(int id, ReplicatedShare<Ring> r_1_mask,
-                                                                          ReplicatedShare<Ring> r_2_mask,
-                                                                          ReplicatedShare<Ring> r_3_mask) {
-  //然后首先计算c = r1 xor r2，这里需要调用乘法了
-  vector<ReplicatedShare<Ring>> r_1_xor_r_2_mask;
-  Ring r1, r2, r3;
-  
-  if(id != 0) {
-    r1 = r_1_mask[idxFromSenderAndReceiver(id, 0)];
-  }
-  else {
-    r1 = 0;
-  }
+ReplicatedShare<Ring> OfflineEvaluator::bool_mul(ReplicatedShare<Ring> a, ReplicatedShare<Ring> b){
+  ReplicatedShare<Ring> temp = a + b;
+  auto temp2 = compute_prod_mask(a, b);
+  temp -= temp2.cosnt_mul(2);
+  return temp;
+}
 
-  if(id != 1) {
-    r2 = r_2_mask[idxFromSenderAndReceiver(id, 1)];
+ReplicatedShare<Ring> OfflineEvaluator::bool_mul_by_indices(vector<ReplicatedShare<Ring>> r_mask_vec, vector<int> indices) {
+  ReplicatedShare<Ring> result = r_mask_vec[indices[0]];
+  for(int i = 1; i < indices.size(); i++) {
+    result = bool_mul(result, r_mask_vec[indices[i]]);
   }
-  else {
-    r2 = 0;
+  return result;
+}
+
+std::tuple<vector<ReplicatedShare<Ring>>, vector<ReplicatedShare<Ring>>> OfflineEvaluator::comute_random_r_every_bit_sharing(int id, vector<ReplicatedShare<Ring>> r_mask_vec,
+                                                                                          std::vector<std::pair<int, int>> indices) {
+  //首先计算17个随机数的每一比特的共享
+  std::array<std::array<ReplicatedShare<Ring>, 17>, N> r_mask_vec_every_bit;
+  vector<ReplicatedShare<Ring>> r_1_mask_vec_every_bit;
+  vector<ReplicatedShare<Ring>> r_2_mask_vec_every_bit;
+  for(int i = 0; i<N; i++) {
+    for(int j = 0; j<indices.size(); j++) {
+      //计算第i个随机数r的第j个比特
+      ReplicatedShare<Ring> r_i_for_j_bit_mask;
+      r_i_for_j_bit_mask.init_zero();
+
+      Ring r_i;
+      auto pair = indices[j];
+      auto index1 = std::get<0>(pair);
+      auto index2 = std::get<1>(pair);
+      
+      //找到r_i的值，不同的参与方拥有的值不一样
+      if(id == index1 || id == index2) {
+        r_i = 0;
+      }
+      else {
+        r_i = r_mask_vec[i][upperTriangularToArray(index1, index2)];
+      }
+      if(((r_i >> i) & 1ULL) == 1 && id != index1 && id != index2) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
+        r_i_for_j_bit_mask[upperTriangularToArray(index1, index2)] = 1;
+      }
+      r_mask_vec_every_bit[i][j] = r_i_for_j_bit_mask;
+    }
   }
 
   for(int i = 0; i<N; i++) {
-    ReplicatedShare<Ring> temp;
-    //计算r1的第i比特共享
-    ReplicatedShare<Ring> r_1_i_bit_mask;
-    r_1_i_bit_mask.init_zero();
-    if(((r1 >> i) & 1ULL) == 1 && id != 0) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
-      r_1_i_bit_mask[idxFromSenderAndReceiver(id_, 0)] = 1;
-    }
-    //计算r2的第i比特共享
-    ReplicatedShare<Ring> r_2_i_bit_mask;
-    r_2_i_bit_mask.init_zero();
-    if(((r2 >> i) & 1ULL) == 1 && id != 1) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
-      r_2_i_bit_mask[idxFromSenderAndReceiver(id_, 1)] = 1;
-    }
+    //首先把17个随机数的第j比特存在一个vector中
+    std::vector<ReplicatedShare<Ring>> r_j_bit_mask_vec;
+    r_j_bit_mask_vec.reserve(r_mask_vec_every_bit[i].size());
+    std::copy(r_mask_vec_every_bit[i].begin(), r_mask_vec_every_bit[i].end(), std::back_inserter(r_j_bit_mask_vec));
 
-    //r1 xor r2 = r1 + r2 - 2r1·r2
-    temp = r_1_i_bit_mask + r_2_i_bit_mask;
-    auto r_1_times_r_2_mask = compute_prod_mask(r_1_i_bit_mask, r_2_i_bit_mask);
-    temp -= r_1_times_r_2_mask.cosnt_mul(2);
-    r_1_xor_r_2_mask.push_back(temp);
-    
+    std::vector<int>  indices1 = {0, 1, 2};
+    auto r = bool_mul_by_indices(r_j_bit_mask_vec, indices1);
+
+    std::vector<int>  indices2 = {5, 8, 6, 9, 7, 10, 3};
+    auto r_1 = bool_mul_by_indices(r_j_bit_mask_vec, indices2);
+    r_1 = bool_mul(r_1, r);
+
+    std::vector<int>  indices3 = {11, 14, 12, 15, 13, 16, 4};
+    auto r_2 = bool_mul_by_indices(r_j_bit_mask_vec, indices3);
+    r_2 = bool_mul(r_2, r);
+
+    r_1_mask_vec_every_bit.push_back(r_1);
+    r_2_mask_vec_every_bit.push_back(r_2);
   }
 
-  //然后计算c xor r3
-  vector<ReplicatedShare<Ring>> r_1_xor_r_2_xor_r_3_mask;
-  if(id != 2) {
-    r3 = r_3_mask[idxFromSenderAndReceiver(id_, 2)];
-  }
-  else {
-    r3 = 0;
-  }
-  
-  for(int i = 0; i<N; i++) {
-    ReplicatedShare<Ring> temp;
-    //计算r3的第i比特共享
-    ReplicatedShare<Ring> r_3_i_bit_mask;
-    r_3_i_bit_mask.init_zero();
-    if(((r3 >> i) & 1ULL) == 1 && id != 2) { //计算r1的第i比特的共享，要确保五个人的共享值复原后等于r的第i比特
-      r_3_i_bit_mask[idxFromSenderAndReceiver(id_, 2)] = 1;
-    }
-
-    //c xor r2 = c + r2 - 2c·r2
-    temp = r_1_xor_r_2_mask[i] + r_3_i_bit_mask;
-    auto c_times_r_3_mask = compute_prod_mask(r_1_xor_r_2_mask[i], r_3_i_bit_mask);
-    temp -= c_times_r_3_mask.cosnt_mul(2);
-    r_1_xor_r_2_xor_r_3_mask.push_back(temp);
-  }
-  return r_1_xor_r_2_xor_r_3_mask;
+  return {r_1_mask_vec_every_bit, r_2_mask_vec_every_bit};
 }
 
 PreprocCircuit<Ring> OfflineEvaluator::getPreproc() {
@@ -708,23 +693,26 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
         case utils::GateType::kTrdotp: {
           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
 
-          ReplicatedShare<Ring> r;
-          ReplicatedShare<Ring> r_trunted_d;
-          r.init_zero(); 
-          r_trunted_d.init_zero();
+          ReplicatedShare<Ring> r_1, r_2;
+          ReplicatedShare<Ring> r_1_trunted_d, r_2_trunted_d;
+          r_1.init_zero(); r_2.init_zero(); 
+          r_1_trunted_d.init_zero(); r_2_trunted_d.init_zero();
           //首先生成r1,r2,r3的共享，按照表格的内容生成
-          ReplicatedShare<Ring> r_1_mask = randomShareWithParty_for_trun(id_, rgen_, 0);
-          ReplicatedShare<Ring> r_2_mask = randomShareWithParty_for_trun(id_, rgen_, 1);
-          ReplicatedShare<Ring> r_3_mask = randomShareWithParty_for_trun(id_, rgen_, 2);
+          std::vector<std::pair<int, int>> indices = { {0,1}, {0,2}, {1,2}, {3,4}, {5,6}, {0,3},
+                                                      {1,3}, {2,3}, {0,4}, {1,4}, {2,4}, {0,5},
+                                                      {1,5}, {2,5}, {0,6}, {1,6}, {2,6}};
+          vector<ReplicatedShare<Ring>> r_mask_vec = randomShareWithParty_for_trun(id_, rgen_, indices);
         
           //生成r的每一比特共享
-          auto r_1_xor_r_2_xor_r_3_mask = comute_random_r_every_bit_sharing(id_, r_1_mask, r_2_mask, r_3_mask);
+          auto [r_1_every_bit, r_2_every_bit] = comute_random_r_every_bit_sharing(id_, r_mask_vec, indices);
           //最后计算随机数r的共享和r^d的共享
 
           for(int i = 0; i<N; i++) {
-            r += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << i));
+            r_1 += r_1_every_bit[i].cosnt_mul((1ULL << i));
+            r_2 += r_2_every_bit[i].cosnt_mul((1ULL << i));
             if(i>=FRACTION) {
-              r_trunted_d += r_1_xor_r_2_xor_r_3_mask[i].cosnt_mul((1ULL << (i-FRACTION)));
+              r_1_trunted_d += r_1_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
+              r_2_trunted_d += r_2_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
             }
           }          
           
@@ -739,9 +727,10 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
           //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
           //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
           //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
+          ReplicatedShare<Ring> r = r_1 + r_2;
+          ReplicatedShare<Ring> r_trunted_d = r_1_trunted_d + r_2_trunted_d;
           preproc.gates[g->out] = std::make_unique<PreprocTrDotpGate<Ring>>( 
-              r_trunted_d, mask_prod_dot,
-              r);
+              r_trunted_d, mask_prod_dot, r);
           break;
         }
 

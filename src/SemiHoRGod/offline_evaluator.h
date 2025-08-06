@@ -71,16 +71,20 @@ class OfflineEvaluator {
   // Following methods implement various preprocessing subprotocols.
 
   // Generate the random number r1, r2, r3, where number_random_id ∈ {0,1,2}
-  ReplicatedShare<Ring> randomShareWithParty_for_trun(int id, RandGenPool& rgen, int number_random_id);
+  std::vector<ReplicatedShare<Ring>> randomShareWithParty_for_trun(int id, RandGenPool& rgen, std::vector<std::pair<int, int>> indices);
   //Used for multiplication to compute α_{xy}
   ReplicatedShare<Ring> compute_prod_mask(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2);
 
   ReplicatedShare<Ring> compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1, vector<ReplicatedShare<Ring>> mask_in2);
 
   //given sharings of three random number r1, r2, r3, generating the every bit sharing of r = r1 xor r2 xor r3
-  vector<ReplicatedShare<Ring>> comute_random_r_every_bit_sharing(int id, ReplicatedShare<Ring> r_1_mask,
-                                                                          ReplicatedShare<Ring> r_2_mask,
-                                                                          ReplicatedShare<Ring> r_3_mask);
+  ReplicatedShare<Ring> bool_mul(ReplicatedShare<Ring> a, ReplicatedShare<Ring> b);
+  ReplicatedShare<Ring> bool_mul_by_indices(vector<ReplicatedShare<Ring>> r_mask_vec, vector<int> indices);
+  std::tuple<vector<ReplicatedShare<Ring>>, vector<ReplicatedShare<Ring>>> comute_random_r_every_bit_sharing(int id, 
+                                                                                                            vector<ReplicatedShare<Ring>> r_mask_vec, 
+                                                                                                            std::vector<std::pair<int, int>> indices);
+                                                                                            
+
   // Computes S_1 and S_2 summands.
   void computeABCrossTerms();
   // Computes S_0 summands by running instances of disMult.

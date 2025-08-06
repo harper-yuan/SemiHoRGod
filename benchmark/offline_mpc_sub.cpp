@@ -7,7 +7,6 @@
 #include <cmath>
 #include <iostream>
 #include <memory>
-
 #include "utils.h"
 
 #define BENCHMARK(acc, lbl, f, ...)            \
@@ -46,7 +45,6 @@ utils::Circuit<Ring> generateCircuit(size_t num_mult_gates) {
   }
   outputs[num_mult_gates - 1] = circ.addGate(
       utils::GateType::kMul, inputs[num_mult_gates - 1], inputs[0]);
-
   return circ;
 }
 
