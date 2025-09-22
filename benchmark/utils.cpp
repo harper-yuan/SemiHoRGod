@@ -14,7 +14,7 @@ double TimePoint::operator-(const TimePoint& rhs) const {
 }
 
 CommPoint::CommPoint(io::NetIOMP<NUM_PARTIES>& network) : stats{} {
-  for (size_t i = 0; i < 4; ++i) {
+  for (size_t i = 0; i < NUM_PARTIES; ++i) {
     if (i != network.party) {
       stats[i] = network.get(i, false)->counter + network.get(i, true)->counter;
     }
@@ -23,7 +23,7 @@ CommPoint::CommPoint(io::NetIOMP<NUM_PARTIES>& network) : stats{} {
 
 std::array<uint64_t, NUM_PARTIES> CommPoint::operator-(const CommPoint& rhs) const {
   std::array<uint64_t, NUM_PARTIES> res{};
-  for (size_t i = 0; i < 5; ++i) {
+  for (size_t i = 0; i < NUM_PARTIES; ++i) {
     res[i] = stats[i] - rhs.stats[i];
   }
   return res;
@@ -50,16 +50,6 @@ bool saveJson(const nlohmann::json& data, const std::string& fpath) {
   std::cout << "Saved data in " << fpath << std::endl;
 
   return true;
-}
-
-void initNTL(size_t num_threads) {
-  NTL::ZZ_p::init(NTL::conv<NTL::ZZ>("18446744073709551616"));
-  NTL::ZZ_pX P(NTL::INIT_MONO, 47);
-  NTL::SetCoeff(P, 5);
-  NTL::SetCoeff(P, 0);
-  NTL::ZZ_pE::init(P);
-
-  NTL::SetNumThreads(num_threads);
 }
 
 #ifdef __APPLE__

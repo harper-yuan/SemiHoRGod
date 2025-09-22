@@ -35,4 +35,4 @@ class StatsPoint {
 bool saveJson(const nlohmann::json& data, const std::string& fpath);
 int64_t peakVirtualMemory();
 int64_t peakResidentSetSize();
-void initNTL(size_t num_threads);
+

@@ -13,7 +13,6 @@ add_benchmark(online_nn)
 add_benchmark(offline_nn)
 add_benchmark(offline_mpc_tp)
 add_benchmark(offline_mpc_sub)
-add_benchmark(sodo_gridlock_iter)
 
 add_custom_target(benchmarks)
 add_dependencies(benchmarks ${benchbin})

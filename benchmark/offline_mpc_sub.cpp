@@ -80,7 +80,7 @@ void benchmark(const bpo::variables_map& opts) {
     fnet >> netdata;
     fnet.close();
 
-    std::vector<std::string> ipaddress(5);
+    std::vector<std::string> ipaddress(NUM_PARTIES);
     std::array<char*, NUM_PARTIES> ip{};
     for (size_t i = 0; i < NUM_PARTIES; ++i) {
       ipaddress[i] = netdata[i].get<std::string>();
@@ -116,8 +116,6 @@ void benchmark(const bpo::variables_map& opts) {
       input_pid_map[g->out] = 0;
     }
   }
-
-  initNTL(cp_threads);
 
   for (size_t r = 0; r < repeat; ++r) {
     OfflineEvaluator eval(pid, network1, network2, circ, security_param,
