@@ -30,7 +30,8 @@ enum GateType {
   kMsb, //大小比较
   kCmp, //基于a(x-y)+b的大小比较
   kDotprod, //点
-  kTrdotp,  
+  kTrdotp,
+  kPerm, //permutation //harper permu
   kInvalid,
   NumGates //enum类型本质上是一个个数，这些数是按顺序排列的，所以最后一个数代表前面门的数量
 };
@@ -77,6 +78,24 @@ struct SIMDGate : public Gate {
   SIMDGate(GateType type, std::vector<wire_t> in1, std::vector<wire_t> in2,
            wire_t out);
 };
+
+struct PermGate : public Gate {
+  std::vector<wire_t> in1{0};
+  std::vector<wire_t> in2{0};
+  std::vector<wire_t> multi_out;
+
+  PermGate() = default;
+  PermGate(GateType type, std::vector<wire_t> in1, std::vector<wire_t> in2,
+           std::vector<wire_t> multi_out);
+};
+// struct PermGate : public Gate {
+//   std::vector<wire_t> in1{0};
+//   std::vector<wire_t> in2{0};
+
+//   PermGate() = default;
+//   PermGate(GateType type, std::vector<wire_t> in1, std::vector<wire_t> in2,
+//            wire_t out);
+// };
 
 // Represents gates where one input is a constant.
 template <class R>
@@ -132,6 +151,16 @@ class Circuit {
     outputs_.push_back(wid);
   }
 
+  //harper permu
+  void setAsOutput(vector<wire_t> wid_vec) {
+    for (size_t i = 0; i < wid_vec.size(); ++i) {
+      if (!isWireValid(wid_vec[i])) {
+        throw std::invalid_argument("Invalid wire ID.");
+      }
+      outputs_.push_back(wid_vec[i]);
+    }
+  }
+
   // Function to add a gate with fan-in 2.
   wire_t addGate(GateType type, wire_t input1, wire_t input2) {
     if (type != GateType::kAdd && type != GateType::kMul &&
@@ -185,7 +214,7 @@ class Circuit {
   // Function to add a multiple fan-in gate.
   wire_t addGate(GateType type, const std::vector<wire_t>& input1,
                  const std::vector<wire_t>& input2) {
-    if (type != GateType::kDotprod && type != GateType::kTrdotp) {
+    if (type != GateType::kDotprod && type != GateType::kTrdotp && type != GateType::kPerm) { 
       throw std::invalid_argument("Invalid gate type.");
     }
 
@@ -198,9 +227,34 @@ class Circuit {
         throw std::invalid_argument("Invalid wire ID.");
       }
     }
-
     wire_t output = gates_.size();
     gates_.push_back(std::make_shared<SIMDGate>(type, input1, input2, output));
+    return output;
+  }
+  //harper permu
+  vector<wire_t> addGate_permu(GateType type, const std::vector<wire_t>& input1,
+                 const std::vector<wire_t>& input2) {
+    if (type != GateType::kPerm) { //harper permu
+      throw std::invalid_argument("Invalid gate type.");
+    }
+
+    if (input1.size() != input2.size()) {
+      throw std::invalid_argument("Expected same length inputs.");
+    }
+
+    for (size_t i = 0; i < input1.size(); ++i) {
+      if (!isWireValid(input1[i]) || !isWireValid(input2[i])) {
+        throw std::invalid_argument("Invalid wire ID.");
+      }
+    }
+    vector<wire_t> output;
+    for (size_t i = 0; i < input1.size(); ++i) {
+      wire_t output_temp = gates_.size()+i;
+      output.push_back(output_temp);  
+    }
+    for (size_t i = 0; i < input1.size(); ++i) {
+      gates_.push_back(std::make_shared<PermGate>(type, input1, input2, output));
+    }
     return output;
   }
 
@@ -304,6 +358,7 @@ class Circuit {
     }
 
     for (const auto& level : level_circ.gates_by_level) {
+      int counter = 0;
       for (const auto& gate : level) {
         switch (gate->type) {
           case GateType::kInp: {
@@ -391,6 +446,14 @@ class Circuit {
             for (size_t i = 0; i < g->in1.size(); i++) {
               wires[g->out] += wires[g->in1.at(i)] * wires[g->in2.at(i)];
             }
+            break;
+          }
+
+          case GateType::kPerm: {
+            auto* g = static_cast<PermGate*>(gate.get());
+            size_t new_index = wires[g->in2.at(counter)];
+            wires[g->multi_out[new_index]] = wires[g->in1.at(counter)];
+            counter++;
             break;
           }
 

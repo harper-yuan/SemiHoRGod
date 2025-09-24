@@ -29,6 +29,11 @@ class OnlineEvaluator {
   std::shared_ptr<ThreadPool> tpool_; //多线程
   utils::LevelOrderedCircuit msb_circ_;
 
+  std::vector<Ring> my_betas_;
+  std::vector<Ring> my_betas_perm_;
+  vector<ReplicatedShare<Ring>> data_sharing_vec_;
+  PreprocCircuit_permutation<Ring> preproc_perm_;
+
   // Reconstruct shares stored in recon_shares_.
   // Argument format is more suitable for communication compared to
   // vector<ReplicatedShare<Ring>>.
@@ -52,10 +57,15 @@ class OnlineEvaluator {
                   int security_param, std::shared_ptr<ThreadPool> tpool,
                   int seed = 200);
 
+   OnlineEvaluator(int id, std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network,
+                  PreprocCircuit_permutation<Ring> preproc_perm, utils::LevelOrderedCircuit circ,
+                  int security_param, int threads, int seed = 200);
   // Secret share inputs.
   // 'inputs' is a mapping from wire id to input value with entries for only
   // those inputs provided by this party.
   void setInputs(const std::unordered_map<utils::wire_t, Ring>& inputs);
+  void setBetaVectors(const std::vector<Ring>& my_betas, const std::vector<Ring>& my_beta_perm);
+  void setInputs_perm(vector<Ring> data_vector, vector<Ring> permutation_vector);
   // Set random values on circuit input wires.
   void setRandomInputs();
   // Evaluate gates at depth 'depth'.
@@ -63,6 +73,7 @@ class OnlineEvaluator {
   void evaluateGatesAtDepth(size_t depth);
   // Compute and returns circuit outputs.
   std::vector<Ring> getOutputs();
+  std::vector<Ring> getOutputs_perm();
   // Utility function to reconstruct vector of shares.
   std::vector<Ring> reconstruct(
       const std::vector<ReplicatedShare<Ring>>& shares);
@@ -70,6 +81,8 @@ class OnlineEvaluator {
   // Evaluate online phase for circuit.
   std::vector<Ring> evaluateCircuit(
       const std::unordered_map<utils::wire_t, Ring>& inputs);
+
+  std::vector<Ring> evaluateCircuit_perm(vector<Ring> data_vector, vector<Ring> permutation_vector);
 };
 
 // Helper class to efficiently evaluate online phase on boolean circuit.

@@ -15,8 +15,13 @@ target_link_libraries(online_test Boost::unit_test_framework Threads::Threads Se
 add_executable(offline_online_test offline_online.cpp)
 target_link_libraries(offline_online_test Boost::unit_test_framework Threads::Threads SemiHoRGod)
 
+add_executable(permutation_test permutation.cpp)
+target_link_libraries(permutation_test Boost::unit_test_framework Threads::Threads SemiHoRGod)
+
 add_custom_target(tests_SemiHoRGod)
 add_dependencies(tests_SemiHoRGod io_test utils_test online_test offline_online_test)
+
+
 
 # add_dependencies(tests_SemiHoRGod io_test utils_test )
 
@@ -25,3 +30,4 @@ add_test(NAME utils_test COMMAND utils_test)
 add_test(NAME ijmp_test COMMAND ijmp_test)
 add_test(NAME online_test COMMAND online_test)
 add_test(NAME offline_online_test COMMAND offline_online_test)
+add_test(NAME permutation_test COMMAND permutation_test)

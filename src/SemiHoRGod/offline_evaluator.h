@@ -117,5 +117,11 @@ class OfflineEvaluator {
       const utils::LevelOrderedCircuit& circ,
       const std::unordered_map<utils::wire_t, int>& input_pid_map,
       size_t security_param, int pid, emp::PRG& prg);
+  
+  std::array<vector<Ring>, 22> reshare_gen_random_vector(int pid, RandGenPool& rgen, int array_length);
+  PreprocCircuit_permutation<Ring> dummy_permutation(
+      const utils::LevelOrderedCircuit& circ,
+      const std::unordered_map<utils::wire_t, int>& input_pid_map,
+      size_t security_param, int pid, emp::PRG& prg, vector<Ring>& data_vector, vector<Ring>& permutation_vector);
 };
 };  // namespace SemiHoRGod

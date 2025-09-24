@@ -157,4 +157,42 @@ struct PreprocCircuit {
   PreprocCircuit(size_t num_gates, size_t num_output)
       : gates(num_gates), output(num_output) {}
   };
+
+
+template <class R>
+struct PreprocPermutation {
+  PermutationShare<R> mask;
+  // ID of party providing input on wire.
+  int pid{};
+  // Plaintext value of mask on input wire. Non-zero for all parties except
+  // party with id 'pid'.
+  vector<R> mask_value;
+
+  PreprocPermutation() = default;
+  PreprocPermutation(const PermutationShare<R>& mask, int pid, vector<R> mask_value)
+    : mask(mask), pid(pid), mask_value(std::move(mask_value)) {}
+};
+
+template <class R>
+using preprocg_ptr_t_perm = std::unique_ptr<PreprocPermutation<R>>;
+
+// Preprocessed data for the circuit.
+template <class R>
+struct PreprocCircuit_permutation {
+  std::vector<ReplicatedShare<R>> data_;
+  preprocg_ptr_t_perm<R> permutation_;
+  vector<vector<R>> saved_beta_;
+  vector<R> mask_value_vec_;
+
+  PreprocCircuit_permutation() = default;
+  PreprocCircuit_permutation(std::vector<ReplicatedShare<R>> data, 
+                           preprocg_ptr_t_perm<R> permutation,
+                           vector<vector<R>> saved_beta,
+                           vector<R> mask_value_vec)
+      : data_(std::move(data)), 
+        permutation_(std::move(permutation)),
+        saved_beta_(std::move(saved_beta)),
+        mask_value_vec_(std::move(mask_value_vec)) {}
+  };
+  
 };  // namespace SemiHoRGod

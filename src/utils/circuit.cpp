@@ -16,6 +16,10 @@ SIMDGate::SIMDGate(GateType type, std::vector<wire_t> in1,
                    std::vector<wire_t> in2, wire_t out)
     : Gate(type, out), in1(std::move(in1)), in2(std::move(in2)) {}
 
+//harper permu
+PermGate::PermGate(GateType type, std::vector<wire_t> in1, std::vector<wire_t> in2, std::vector<wire_t> multi_out)
+    : Gate(type, multi_out[0]), in1(std::move(in1)), in2(std::move(in2)), multi_out(std::move(multi_out)) {}  
+
 std::ostream& operator<<(std::ostream& os, GateType type) {
   switch (type) {
     case kInp:
@@ -62,6 +66,10 @@ std::ostream& operator<<(std::ostream& os, GateType type) {
       os << "Dotproduct with truncation";
       break;
 
+    case kPerm:
+      os << "Permutation";
+      break;
+      
     default:
       os << "Invalid";
       break;

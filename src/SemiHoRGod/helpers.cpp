@@ -19,24 +19,14 @@ std::tuple<int, int, int> sortThreeNumbers(int a, int b, int c) {
     return {a, b, c};  // 返回排序后的元组
 }
 
-std::tuple<int, int> findRemainingNumbers(int min, int mid, int max) {
-    std::vector<int> remaining;
-    for (int num : {0, 1, 2, 3, 4}) {
-        if (num != min && num != mid && num != max) {
-            remaining.push_back(num);
-        }
-    }
-    return {remaining[0], remaining[1]};
-}
-
-std::tuple<int, int, int> findRemainingNumbers(int min, int max) {
+std::tuple<int, int, int, int, int> findRemainingNumbers_7PC(int i, int j) {
   std::vector<int> remaining;
-  for (int num : {0, 1, 2, 3, 4}) {
-      if (num != min && num != max) {
+  for (int num : {0, 1, 2, 3, 4, 5, 6}) {
+      if (num != i && num != j) {
           remaining.push_back(num);
       }
   }
-  return {remaining[0], remaining[1], remaining[2]};
+  return {remaining[0], remaining[1], remaining[2], remaining[3], remaining[4]};
 }
 
 std::tuple<int, int, int, int> findRemainingNumbers_7PC(int i, int j, int k) {

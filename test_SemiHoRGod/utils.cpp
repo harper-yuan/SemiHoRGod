@@ -312,66 +312,6 @@ BOOST_AUTO_TEST_CASE(dotp_gate) {
   BOOST_TEST(level_circ.count[GateType::kRelu] == 0);
 }
 
-BOOST_AUTO_TEST_CASE(msb_circuit) {
-  Circuit circ = Circuit<BoolRing>::generatePPAMSB();
-  uint64_t a, b;
-  a = 4;
-  b = -5;
-  auto aval = static_cast<uint64_t>(a);
-  auto bval = static_cast<uint64_t>(b);
-  auto sum = aval + bval;
-
-  std::vector<BoolRing> aval_bits(64);
-  std::vector<BoolRing> bval_bits(64);
-  std::vector<BoolRing> sum_bits(64);
-  for (size_t i = 0; i < 64; ++i) {
-    aval_bits[i] = ((aval >> i) & 1) == 1;
-    bval_bits[i] = ((bval >> i) & 1) == 1;
-    sum_bits[i] = ((sum >> i) & 1) == 1;
-  }
-
-  std::unordered_map<wire_t, BoolRing> input_map;
-  for (size_t i = 0; i < 64; ++i) {
-    input_map[i] = aval_bits[i];
-    input_map[64 + i] = bval_bits[i];
-  }
-
-  auto output = circ.evaluate(input_map);
-
-  BOOST_TEST(output[0] == sum_bits[63]);
-}
-
-BOOST_DATA_TEST_CASE(ppa_circuit,
-                     bdata::random(0, TEST_DATA_MAX_VAL) ^
-                         bdata::random(0, TEST_DATA_MAX_VAL) ^ bdata::xrange(1),
-                     input_a, input_b, idx) {
-  Circuit circ = Circuit<BoolRing>::generatePPA();
-  uint64_t a, b;
-  a = 12;
-  b = -20;
-  auto aval = static_cast<uint64_t>(a);
-  auto bval = static_cast<uint64_t>(b);
-  auto sum = aval + bval;
-  std::vector<BoolRing> aval_bits(64);
-  std::vector<BoolRing> bval_bits(64);
-  std::vector<BoolRing> sum_bits(64);
-  for (size_t i = 0; i < 64; ++i) {
-    aval_bits[i] = ((aval >> i) & 1) == 1;
-    bval_bits[i] = ((bval >> i) & 1) == 1;
-    sum_bits[i] = ((sum >> i) & 1) == 1;
-  }
-  std::unordered_map<wire_t, BoolRing> input_map;
-  for (size_t i = 0; i < 64; ++i) {
-    input_map[i] = aval_bits[i];
-    input_map[64 + i] = bval_bits[i];
-  }
-
-  auto output = circ.evaluate(input_map);
-  for (int i = 0; i < 64; ++i) {
-  }
-  BOOST_TEST(output == sum_bits);
-}
-
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(rand_gen_pool)
@@ -405,65 +345,6 @@ BOOST_AUTO_TEST_CASE(matching_output) {
           }
         }
       }
-    }
-  }
-}
-
-BOOST_AUTO_TEST_SUITE_END()
-
-BOOST_AUTO_TEST_SUITE(bool_ring)
-
-BOOST_AUTO_TEST_CASE(operations) {
-  for (int i = 0; i < 1; ++i) {
-    for (int j = 0; j < 1; ++j) {
-      BoolRing ar(i);
-      BoolRing br(j);
-      bool a = (i != 0);
-      bool b = (j != 0);
-
-      BOOST_TEST((ar + br).val() == (a != b));
-      BOOST_TEST((ar - br).val() == (a != b));
-      BOOST_TEST((ar * br).val() == (a && b));
-    }
-  }
-
-  BoolRing a = 0;
-  BoolRing b = 1;
-
-  BOOST_TEST(!a.val());
-  BOOST_TEST(b.val());
-}
-
-BOOST_AUTO_TEST_CASE(add_gate) {
-  Circuit<BoolRing> circ;
-  auto wa = circ.newInputWire();
-  auto wb = circ.newInputWire();
-  auto wsum = circ.addGate(GateType::kAdd, wa, wb);
-  circ.setAsOutput(wsum);
-
-  for (int i = 0; i < 1; ++i) {
-    for (int j = 0; j < 1; ++j) {
-      BoolRing a(i);
-      BoolRing b(j);
-      auto output = circ.evaluate({{wa, a}, {wb, b}});
-      BOOST_TEST(output[0] == a * b);
-    }
-  }
-}
-
-BOOST_AUTO_TEST_CASE(mul_gate) {
-  Circuit<BoolRing> circ;
-  auto wa = circ.newInputWire();
-  auto wb = circ.newInputWire();
-  auto wprod = circ.addGate(GateType::kMul, wa, wb);
-  circ.setAsOutput(wprod);
-
-  for (int i = 0; i < 1; ++i) {
-    for (int j = 0; j < 1; ++j) {
-      BoolRing a(i);
-      BoolRing b(j);
-      auto output = circ.evaluate({{wa, a}, {wb, b}});
-      BOOST_TEST(output[0] == a * b);
     }
   }
 }

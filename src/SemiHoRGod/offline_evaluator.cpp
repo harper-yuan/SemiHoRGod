@@ -1055,4 +1055,440 @@ PreprocCircuit<Ring> OfflineEvaluator::dummy(
   }
   return preproc;
 }
+
+std::array<vector<Ring>, 22> OfflineEvaluator::reshare_gen_random_vector(int pid, RandGenPool& rgen, int array_length) {
+  std::array<vector<Ring>, 22> result;
+  for(int j =  0; j < array_length; j++) {
+    Ring sum_temp = 0;
+    Ring temp = 10000;
+    for(int i = 0; i < 21; i++) {
+      temp += i*i + 100*i;
+      // rgen.getComplement(pid).random_data(&temp, sizeof(Ring));
+      // temp = temp % (1ULL<<8);
+      result[i].push_back(temp);
+      sum_temp += temp;
+    }
+    result[21].push_back(sum_temp);
+  }
+  return result;
+}
+
+PreprocCircuit_permutation<Ring> OfflineEvaluator::dummy_permutation(
+  const utils::LevelOrderedCircuit& circ,
+  const std::unordered_map<utils::wire_t, int>& input_pid_map,
+  size_t security_param, int pid, emp::PRG& prg, vector<Ring>& data_vector, vector<Ring>& permutation_vector) {
+
+  if(data_vector.size() != permutation_vector.size()) {
+    throw std::runtime_error("data vector size must be equal to permutation size.");
+  }
+  uint64_t nf =  data_vector.size();
+  int input_pid = INPUT_PERMUTATION;
+  vector<ReplicatedShare<Ring>> data_sharing_vec(nf);
+
+  //Firstly, share the data array
+  vector<Ring> mask_value_vec(nf);
+  for(uint64_t i = 0; i<nf ; i++) {
+    DummyShare<Ring> temp;
+    temp.randomize(prg);
+    Ring mask_value = 0;
+    
+    if (pid == INPUT_PERMUTATION) { //fix party INPUT_PERMUTATION inputs the data
+      mask_value = temp.secret(); //mask_value = 5个随机数的和
+    }
+    mask_value_vec[i] = mask_value;
+    data_sharing_vec[i] = temp.getRSS(pid);
+    // data_sharing_vec[i] = std::make_unique<PreprocInput<Ring>>( //预处理门保存RSS，即4个随机值，放在mask成员里面
+    //           temp.getRSS(pid), input_pid, mask_value);
+  }
+
+  //share the permutation
+  PermutationDummyShare<Ring> temp_dummy_perm_sharing(nf);
+  temp_dummy_perm_sharing.randomize(prg);
+  
+  PermutationShare<Ring> perm_sharing = temp_dummy_perm_sharing.getRSS(pid);
+  preprocg_ptr_t_perm<Ring> perm_share_ptr = std::make_unique<PreprocPermutation<Ring>>(
+                                                  temp_dummy_perm_sharing.getRSS(pid), 
+                                                  input_pid, 
+                                                  temp_dummy_perm_sharing.secret()
+                                              );
+  
+  //start to offline
+  
+  std::array<std::array<int,2>,21> Index = {{
+      {0,1}, {0,2}, {0,3}, {0,4}, {0,5}, {0,6}, 
+      {1,2}, {1,3}, {1,4}, {1,5}, {1,6},
+      {2,3}, {2,4}, {2,5}, {2,6},
+      {3,4}, {3,5}, {3,6},
+      {4,5}, {4,6},
+      {5,6}
+  }};
+  vector<vector<Ring>> saved_beta(Index.size());
+  // sleep(pid);
+  // std::cout<<"pid: "<<pid<<endl;
+  
+  for(int i = 0 ; i < Index.size(); i++) { //遍历所有可能性
+    if(i == 3 && pid == 6) {
+      std::cout<<endl;
+    }
+    size_t nbytes = sizeof(Ring) * nf;
+    auto [i_temp,j_temp,k_temp,l_temp,m_temp] = findRemainingNumbers_7PC(Index[i][0], Index[i][1]);
+    auto n_temp = Index[i][0];
+    auto o_temp = Index[i][1];
+    if(pid != Index[i][0] && pid != Index[i][1])  {
+      auto alpha_i = perm_sharing[upperTriangularToArray(Index[i][0], Index[i][1])];
+      applyPermutation(alpha_i, data_sharing_vec);
+      
+      //reshare protocol
+      auto random_vector_array = reshare_gen_random_vector(pid, rgen_, nf);
+      saved_beta[upperTriangularToArray(Index[i][0], Index[i][1])] = random_vector_array[21]; //每一方总共能存21个，而且是按照顺序存的。
+      for(int j = 0; j < nf; j++) { //遍历所有共享
+        for(int k= 0; k<Index.size(); k++) { //每一方遍历自己的所有共享
+          if(Index[k][0] != pid && Index[i][1] != pid) { //把自己的共享找出来
+            data_sharing_vec[j][upperTriangularToArray(Index[k][0], Index[k][1])] += 
+            random_vector_array[upperTriangularToArray(Index[k][0], Index[k][1])][j];
+          }
+        }
+      }
+      
+
+      if(pid == k_temp || pid == l_temp || pid == m_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(i_temp, j_temp)]);
+        }
+        jump_.jumpUpdate(k_temp, l_temp, m_temp, n_temp, nbytes, alpha_temp.data());
+        jump_.jumpUpdate(k_temp, l_temp, m_temp, o_temp, nbytes, alpha_temp.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == j_temp || pid == l_temp || pid == m_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(i_temp, k_temp)]);
+        }
+        jump_.jumpUpdate(j_temp, l_temp, m_temp, n_temp, nbytes, alpha_temp.data());
+        jump_.jumpUpdate(j_temp, l_temp, m_temp, o_temp, nbytes, alpha_temp.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == j_temp || pid == k_temp || pid == m_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(i_temp, l_temp)]);
+        }
+        jump_.jumpUpdate(j_temp, k_temp, m_temp, n_temp, nbytes, alpha_temp.data());
+        jump_.jumpUpdate(j_temp, k_temp, m_temp, o_temp, nbytes, alpha_temp.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == l_temp || pid == m_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(j_temp, k_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, l_temp, m_temp, n_temp, nbytes, alpha_temp.data());
+        jump_.jumpUpdate(i_temp, l_temp, m_temp, o_temp, nbytes, alpha_temp.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == k_temp || pid == m_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(j_temp, l_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, k_temp, m_temp, n_temp, nbytes, alpha_temp.data());
+        jump_.jumpUpdate(i_temp, k_temp, m_temp, o_temp, nbytes, alpha_temp.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == j_temp || pid == m_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(k_temp, l_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, m_temp, n_temp, nbytes, alpha_temp.data());
+        jump_.jumpUpdate(i_temp, j_temp, m_temp, o_temp, nbytes, alpha_temp.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == j_temp || pid == k_temp || pid == l_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(i_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(j_temp, k_temp, l_temp, n_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(i_temp, o_temp)]);
+        }
+        jump_.jumpUpdate(j_temp, k_temp, l_temp, n_temp, nbytes, alpha_temp1.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == k_temp || pid == l_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(j_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, k_temp, l_temp, n_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(j_temp, o_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, k_temp, l_temp, n_temp, nbytes, alpha_temp1.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == j_temp || pid == l_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(k_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, l_temp, n_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(k_temp, o_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, l_temp, n_temp, nbytes, alpha_temp1.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == j_temp || pid == k_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(l_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, n_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(l_temp, o_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, n_temp, nbytes, alpha_temp1.data());
+
+        vector<Ring> alpha_temp2;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp2.push_back(data_sharing_vec[j][upperTriangularToArray(m_temp, o_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, n_temp, nbytes, alpha_temp2.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == j_temp || pid == k_temp || pid == l_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(i_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(j_temp, k_temp, l_temp, o_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(i_temp, n_temp)]);
+        }
+        jump_.jumpUpdate(j_temp, k_temp, l_temp, o_temp, nbytes, alpha_temp1.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == k_temp || pid == l_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(j_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, k_temp, l_temp, o_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(j_temp, n_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, k_temp, l_temp, o_temp, nbytes, alpha_temp1.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == j_temp || pid == l_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(k_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, l_temp, o_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(k_temp, n_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, l_temp, o_temp, nbytes, alpha_temp1.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+      if(pid == i_temp || pid == j_temp || pid == k_temp) {
+        vector<Ring> alpha_temp;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp.push_back(data_sharing_vec[j][upperTriangularToArray(l_temp, m_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, o_temp, nbytes, alpha_temp.data());
+
+        vector<Ring> alpha_temp1;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp1.push_back(data_sharing_vec[j][upperTriangularToArray(l_temp, n_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, o_temp, nbytes, alpha_temp1.data());
+
+        vector<Ring> alpha_temp2;
+        for(int j = 0; j<nf; j++) {
+          alpha_temp2.push_back(data_sharing_vec[j][upperTriangularToArray(m_temp, o_temp)]);
+        }
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, o_temp, nbytes, alpha_temp2.data());
+        // std::cout<<i_temp<<", "<<j_temp<<", "<<k_temp<<", "<<i<<endl;
+      }
+
+    }
+    else { //接受消息，更新自己的alpha
+      if(pid == n_temp || pid == o_temp) {
+        jump_.jumpUpdate(k_temp, l_temp, m_temp, pid, nbytes, nullptr);
+        jump_.jumpUpdate(j_temp, l_temp, m_temp, pid, nbytes, nullptr);
+        jump_.jumpUpdate(j_temp, k_temp, m_temp, pid, nbytes, nullptr);
+        jump_.jumpUpdate(i_temp, l_temp, m_temp, pid, nbytes, nullptr);
+        jump_.jumpUpdate(i_temp, k_temp, m_temp, pid, nbytes, nullptr);
+        jump_.jumpUpdate(i_temp, j_temp, m_temp, pid, nbytes, nullptr);
+        jump_.jumpUpdate(j_temp, k_temp, l_temp, pid, 2*nbytes, nullptr);
+        jump_.jumpUpdate(i_temp, k_temp, l_temp, pid, 2*nbytes, nullptr);
+        jump_.jumpUpdate(i_temp, j_temp, l_temp, pid, 2*nbytes, nullptr);
+        jump_.jumpUpdate(i_temp, j_temp, k_temp, pid, 3*nbytes, nullptr);
+      }
+    }
+    jump_.communicate(*network_, *tpool_);
+    
+    //update the share
+    if(pid == n_temp || pid == o_temp) {
+      vector<Ring> miss_values(nf);
+
+      // 获取数据
+      const auto* temp = reinterpret_cast<const Ring*>(jump_.getValues(k_temp, l_temp, m_temp).data());
+      std::copy(temp, temp + nf, miss_values.begin());
+      for (size_t j = 0; j < nf; j++) {
+          data_sharing_vec[j][upperTriangularToArray(i_temp, j_temp)] = miss_values[j];
+      }
+
+      temp = reinterpret_cast<const Ring*>(jump_.getValues(j_temp, l_temp, m_temp).data());
+      std::copy(temp, temp + nf, miss_values.begin());
+      for (size_t j = 0; j < nf; j++) {
+          data_sharing_vec[j][upperTriangularToArray(i_temp, k_temp)] = miss_values[j];
+      }
+
+      temp = reinterpret_cast<const Ring*>(jump_.getValues(j_temp, k_temp, m_temp).data());
+      std::copy(temp, temp + nf, miss_values.begin());
+      for (size_t j = 0; j < nf; j++) {
+          data_sharing_vec[j][upperTriangularToArray(i_temp, l_temp)] = miss_values[j];
+      }
+
+      temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, l_temp, m_temp).data());
+      std::copy(temp, temp + nf, miss_values.begin());
+      for (size_t j = 0; j < nf; j++) {
+          data_sharing_vec[j][upperTriangularToArray(i_temp, k_temp)] = miss_values[j];
+      }
+
+      temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, k_temp, m_temp).data());
+      std::copy(temp, temp + nf, miss_values.begin());
+      for (size_t j = 0; j < nf; j++) {
+          data_sharing_vec[j][upperTriangularToArray(j_temp, l_temp)] = miss_values[j];
+      }
+
+      temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, j_temp, m_temp).data());
+      std::copy(temp, temp + nf, miss_values.begin());
+      for (size_t j = 0; j < nf; j++) {
+          data_sharing_vec[j][upperTriangularToArray(k_temp, l_temp)] = miss_values[j];
+      }
+
+      if(pid == n_temp) {
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(j_temp, k_temp, l_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(i_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(i_temp, o_temp)] = miss_values[j];
+        }
+
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, k_temp, l_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(j_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(j_temp, o_temp)] = miss_values[j];
+        }
+
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, j_temp, l_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(k_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(k_temp, o_temp)] = miss_values[j];
+        }
+
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, j_temp, k_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(l_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(l_temp, o_temp)] = miss_values[j];
+        }
+        std::copy(temp+2*nf, temp + 3*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(m_temp, o_temp)] = miss_values[j];
+        }
+      }
+
+      if(pid == o_temp) {
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(j_temp, k_temp, l_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(i_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(i_temp, n_temp)] = miss_values[j];
+        }
+
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, k_temp, l_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(j_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(j_temp, n_temp)] = miss_values[j];
+        }
+
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, j_temp, l_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(k_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(k_temp, n_temp)] = miss_values[j];
+        }
+
+        temp = reinterpret_cast<const Ring*>(jump_.getValues(i_temp, j_temp, k_temp).data());
+        std::copy(temp, temp + nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(l_temp, m_temp)] = miss_values[j];
+        }
+        std::copy(temp+nf, temp + 2*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(l_temp, n_temp)] = miss_values[j];
+        }
+        std::copy(temp+2*nf, temp + 3*nf, miss_values.begin());
+        for (size_t j = 0; j < nf; j++) {
+            data_sharing_vec[j][upperTriangularToArray(m_temp, n_temp)] = miss_values[j];
+        }
+      }
+    }
+    jump_.reset(); 
+  }
+  
+  PreprocCircuit_permutation<Ring> preproc_perm(
+    std::move(data_sharing_vec),
+    std::move(perm_share_ptr),
+    std::move(saved_beta),
+    std::move(mask_value_vec));
+  return preproc_perm;
+  
+}
 };  // namespace SemiHoRGod
