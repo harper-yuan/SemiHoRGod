@@ -719,8 +719,9 @@ std::vector<Ring> OnlineEvaluator::reconstruct(
 
 void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
   std::array<std::vector<Ring>, NUM_RSS> recon_shares;
-  std::vector<utils::FIn1Gate> relu_gates;
-  std::vector<utils::FIn1Gate> msb_gates;
+  std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_z;
+  std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_mul;
+
 
   for (auto& gate : circ_.gates_by_level[depth]) {
     switch (gate->type) {
@@ -823,34 +824,12 @@ void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
         }
         break;
       }
-
-      case utils::GateType::kMsb: {
-        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
-        msb_gates.push_back(*g);
-        break;
-      }
-
       default:
         break;
     }
   }
 
   size_t non_relu_recon = recon_shares[0].size();
-  // if (!relu_gates.empty()) {
-  //   auto shares = reluEvaluate(relu_gates);
-  //   for (size_t i = 0; i < NUM_RSS; ++i) {
-  //     recon_shares[i].insert(recon_shares[i].end(), shares[i].begin(),
-  //                            shares[i].end()); //把关于relu的重构，直接放在后面，所以访问重构的数据，需要加上non_relu_recon的索引
-  //   }
-  // }
-
-  if (!msb_gates.empty()) {
-    auto shares = msbEvaluate(msb_gates);
-    for (size_t i = 0; i < NUM_RSS; ++i) {
-      recon_shares[i].insert(recon_shares[i].end(), shares[i].begin(),
-                             shares[i].end());
-    }
-  }
 
   auto vres = reconstruct(recon_shares); //重构出beta_z
 
@@ -883,28 +862,16 @@ void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
             static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
         auto& beta_mu_1 = pre_out->beta_mu_1;
         //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
-        wires_[gate->out] = vres[idx] + wires_[g->in] * beta_mu_1; //for multiplication
+        wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
 
         auto& beta_mu_2 = pre_out->beta_mu_2;
         wires_[gate->out] += beta_mu_2; //for addition
         // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
 
         //下面进行重构，获取z的值，判断比较结果。
-        std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_z;
         for (int i = 0; i < NUM_RSS; ++i) {
           recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
         }
-        auto sum_z = reconstruct(recon_shares_for_z); //为了重构出z
-        auto z = wires_[gate->out] - sum_z[0];
-        std::vector<BoolRing> bin = bitDecompose(z);
-        if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
-          wires_[gate->out] = sum_z[0] + CMP_lESS_RESULT;
-        }
-        else {
-          wires_[gate->out] = sum_z[0] + CMP_GREATER_RESULT;
-        }
-
-        idx++;
         break;
       }
 
@@ -952,25 +919,57 @@ void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
             static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
         auto& beta_mu_1 = pre_out->beta_mu_1;
         //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
-        wires_[gate->out] = vres[idx] + wires_[g->in] * beta_mu_1; //for multiplication
+        wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
 
         auto& beta_mu_2 = pre_out->beta_mu_2;
         wires_[gate->out] += beta_mu_2; //for addition
         // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
 
         //下面进行重构，获取z的值，判断比较结果。
-        std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_z;
         for (int i = 0; i < NUM_RSS; ++i) {
           recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
         }
-        auto sum_z = reconstruct(recon_shares_for_z); //为了重构出z
-        auto z = wires_[gate->out] - sum_z[0];
+        
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  auto sum_z_vec = reconstruct(recon_shares_for_z); //重构出beta_z
+  idx = 0;
+  for (auto& gate : circ_.gates_by_level[depth]) {
+    switch (gate->type) {
+      case utils::GateType::kCmp: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
+        auto sum_z = sum_z_vec[idx++]; //为了重构出z
+        auto z = wires_[gate->out] - sum_z;
         std::vector<BoolRing> bin = bitDecompose(z);
         if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
-          wires_[gate->out] = sum_z[0] + 0;
+          wires_[gate->out] = sum_z + CMP_lESS_RESULT;
         }
         else {
-          wires_[gate->out] = sum_z[0] + 1;
+          wires_[gate->out] = sum_z + CMP_GREATER_RESULT;
+        }
+        break;
+      }
+
+
+      case utils::GateType::kRelu: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out = static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
+        
+        auto sum_z = sum_z_vec[idx++]; //为了重构出z
+        auto z = wires_[gate->out] - sum_z;
+        std::vector<BoolRing> bin = bitDecompose(z);
+        if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
+          wires_[gate->out] = sum_z + 0;
+        }
+        else {
+          wires_[gate->out] = sum_z + 1;
         }
 
         auto& m_in1_mul = preproc_.gates[g->in]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
@@ -978,28 +977,11 @@ void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
         
         auto rec_share_for_mul = pre_out->mask + pre_out->mask_prod2 -
                          m_in1_mul * wires_[g->out] - m_in2_mul * wires_[g->in]; //wires_[g->in1]和wires_[g->in2]是两个β
-        std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_mul;
+        // std::array<std::vector<Ring>, 4> recon_shares_for_mul;
+        
         for (int i = 0; i < NUM_RSS; ++i) {
           recon_shares_for_mul[i].push_back(rec_share_for_mul[i]);
         }
-
-        auto mul_result = reconstruct(recon_shares_for_mul);
-        wires_[gate->out] = mul_result[0] + wires_[g->out] * wires_[g->in];
-        // preproc_.gates[gate->out]->mask = pre_out->mask_for_mul;
-        idx++;
-        break;
-      }
-
-      case utils::GateType::kMsb: {
-        if(msb_temp_value_) {
-          wires_[gate->out] = vres[non_relu_recon + relu_idx + msb_idx] + 2;
-        }
-        else {
-          wires_[gate->out] = vres[non_relu_recon + relu_idx + msb_idx] - 1;
-        }
-        
-        // std::cout<<"参与方"<<id_<<"重构出的β为"<<wires_[gate->out]<<std::endl;
-        msb_idx++;
         break;
       }
 
@@ -1007,12 +989,26 @@ void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
         break;
     }
   }
+  
+  auto mul_result_vec = reconstruct(recon_shares_for_mul); //重构出beta_z
+  idx = 0;
+  for (auto& gate : circ_.gates_by_level[depth]) {
+    if(gate->type == utils::GateType::kRelu) {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out = static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
+
+        auto mul_result = mul_result_vec[idx++];
+        wires_[gate->out] = mul_result + wires_[g->out] * wires_[g->in];
+        break;
+      }
+  }
 }
 
 void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computation_threads) {
   std::array<std::vector<Ring>, NUM_RSS> recon_shares;
-  std::vector<utils::FIn1Gate> relu_gates;
-  std::vector<utils::FIn1Gate> msb_gates;
+  std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_z;
+  std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_mul;
+
 
   omp_set_num_threads(computation_threads); 
   // omp_set_num_threads(omp_get_num_procs());
@@ -1120,34 +1116,12 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
         }
         break;
       }
-
-      case utils::GateType::kMsb: {
-        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
-        msb_gates.push_back(*g);
-        break;
-      }
-
       default:
         break;
     }
   }
 
   size_t non_relu_recon = recon_shares[0].size();
-  // if (!relu_gates.empty()) {
-  //   auto shares = reluEvaluate(relu_gates);
-  //   for (size_t i = 0; i < NUM_RSS; ++i) {
-  //     recon_shares[i].insert(recon_shares[i].end(), shares[i].begin(),
-  //                            shares[i].end()); //把关于relu的重构，直接放在后面，所以访问重构的数据，需要加上non_relu_recon的索引
-  //   }
-  // }
-
-  if (!msb_gates.empty()) {
-    auto shares = msbEvaluate(msb_gates);
-    for (size_t i = 0; i < NUM_RSS; ++i) {
-      recon_shares[i].insert(recon_shares[i].end(), shares[i].begin(),
-                             shares[i].end());
-    }
-  }
 
   auto vres = reconstruct(recon_shares); //重构出beta_z
 
@@ -1182,28 +1156,16 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
             static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
         auto& beta_mu_1 = pre_out->beta_mu_1;
         //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
-        wires_[gate->out] = vres[idx] + wires_[g->in] * beta_mu_1; //for multiplication
+        wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
 
         auto& beta_mu_2 = pre_out->beta_mu_2;
         wires_[gate->out] += beta_mu_2; //for addition
         // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
 
         //下面进行重构，获取z的值，判断比较结果。
-        std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_z;
         for (int i = 0; i < NUM_RSS; ++i) {
           recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
         }
-        auto sum_z = reconstruct(recon_shares_for_z); //为了重构出z
-        auto z = wires_[gate->out] - sum_z[0];
-        std::vector<BoolRing> bin = bitDecompose(z);
-        if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
-          wires_[gate->out] = sum_z[0] + CMP_lESS_RESULT;
-        }
-        else {
-          wires_[gate->out] = sum_z[0] + CMP_GREATER_RESULT;
-        }
-
-        idx++;
         break;
       }
 
@@ -1251,25 +1213,59 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
             static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
         auto& beta_mu_1 = pre_out->beta_mu_1;
         //上面已经重构了一次，得到了beta_z，直接加到这上面即可，但是还需要一次重构来获取Z的值
-        wires_[gate->out] = vres[idx] + wires_[g->in] * beta_mu_1; //for multiplication
+        wires_[gate->out] = vres[idx++] + wires_[g->in] * beta_mu_1; //for multiplication
 
         auto& beta_mu_2 = pre_out->beta_mu_2;
         wires_[gate->out] += beta_mu_2; //for addition
         // preproc_.gates[gate->out]->mask = preproc_.gates[gate->out]->mask + pre_out->mask_mu_2; //for addition
 
         //下面进行重构，获取z的值，判断比较结果。
-        std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_z;
         for (int i = 0; i < NUM_RSS; ++i) {
           recon_shares_for_z[i].push_back(preproc_.gates[gate->out]->mask[i]);
         }
-        auto sum_z = reconstruct(recon_shares_for_z); //为了重构出z
-        auto z = wires_[gate->out] - sum_z[0];
+        
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  auto sum_z_vec = reconstruct(recon_shares_for_z); //重构出beta_z
+  idx = 0;
+  #pragma omp parallel for
+  for (size_t i_temp = 0; i_temp < circ_.gates_by_level[depth].size(); ++i_temp) {
+    auto& gate = circ_.gates_by_level[depth][i_temp];
+    switch (gate->type) {
+      case utils::GateType::kCmp: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out =
+            static_cast<PreprocCmpGate<Ring>*>(preproc_.gates[g->out].get());
+        auto sum_z = sum_z_vec[idx++]; //为了重构出z
+        auto z = wires_[gate->out] - sum_z;
         std::vector<BoolRing> bin = bitDecompose(z);
         if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
-          wires_[gate->out] = sum_z[0] + 0;
+          wires_[gate->out] = sum_z + CMP_lESS_RESULT;
         }
         else {
-          wires_[gate->out] = sum_z[0] + 1;
+          wires_[gate->out] = sum_z + CMP_GREATER_RESULT;
+        }
+        break;
+      }
+
+
+      case utils::GateType::kRelu: {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out = static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
+        
+        auto sum_z = sum_z_vec[idx++]; //为了重构出z
+        auto z = wires_[gate->out] - sum_z;
+        std::vector<BoolRing> bin = bitDecompose(z);
+        if (bin[BITS_GAMMA+BITS_BETA-1].val()) { //最高位是1，那么是负数
+          wires_[gate->out] = sum_z + 0;
+        }
+        else {
+          wires_[gate->out] = sum_z + 1;
         }
 
         auto& m_in1_mul = preproc_.gates[g->in]->mask; //mask代表秘密共享形式下的四个值，即四个alpha
@@ -1277,34 +1273,31 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
         
         auto rec_share_for_mul = pre_out->mask + pre_out->mask_prod2 -
                          m_in1_mul * wires_[g->out] - m_in2_mul * wires_[g->in]; //wires_[g->in1]和wires_[g->in2]是两个β
-        std::array<std::vector<Ring>, NUM_RSS> recon_shares_for_mul;
+        // std::array<std::vector<Ring>, 4> recon_shares_for_mul;
+        
         for (int i = 0; i < NUM_RSS; ++i) {
           recon_shares_for_mul[i].push_back(rec_share_for_mul[i]);
         }
-
-        auto mul_result = reconstruct(recon_shares_for_mul);
-        wires_[gate->out] = mul_result[0] + wires_[g->out] * wires_[g->in];
-        // preproc_.gates[gate->out]->mask = pre_out->mask_for_mul;
-        idx++;
-        break;
-      }
-
-      case utils::GateType::kMsb: {
-        if(msb_temp_value_) {
-          wires_[gate->out] = vres[non_relu_recon + relu_idx + msb_idx] + 2;
-        }
-        else {
-          wires_[gate->out] = vres[non_relu_recon + relu_idx + msb_idx] - 1;
-        }
-        
-        // std::cout<<"参与方"<<id_<<"重构出的β为"<<wires_[gate->out]<<std::endl;
-        msb_idx++;
         break;
       }
 
       default:
         break;
     }
+  }
+  
+  auto mul_result_vec = reconstruct(recon_shares_for_mul); //重构出beta_z
+  idx = 0;
+  #pragma omp parallel for
+  for (size_t i_temp = 0; i_temp < circ_.gates_by_level[depth].size(); ++i_temp) {
+    auto& gate = circ_.gates_by_level[depth][i_temp];
+    if(gate->type == utils::GateType::kRelu) {
+        auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+        auto* pre_out = static_cast<PreprocReluGate<Ring>*>(preproc_.gates[g->out].get());
+
+        auto mul_result = mul_result_vec[idx++];
+        wires_[gate->out] = mul_result + wires_[g->out] * wires_[g->in];
+      }
   }
 }
 
