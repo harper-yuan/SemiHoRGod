@@ -32,22 +32,33 @@ using namespace SemiHoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
 
-utils::Circuit<Ring> generateCircuit(size_t num_mult_gates) {
+utils::Circuit<Ring> generateCircuit(size_t gates_per_level, size_t depth) {
   utils::Circuit<Ring> circ;
 
-  std::vector<utils::wire_t> inputs(num_mult_gates);
-  std::generate(inputs.begin(), inputs.end(),
+  std::vector<utils::wire_t> level_inputs(gates_per_level);
+  std::generate(level_inputs.begin(), level_inputs.end(),
                 [&]() { return circ.newInputWire(); });
 
-  std::vector<utils::wire_t> outputs(num_mult_gates);
-  for (size_t i = 0; i < num_mult_gates - 1; ++i) {
-    outputs[i] = circ.addGate(utils::GateType::kMul, inputs[i], inputs[i + 1]);
+  for (size_t d = 0; d < depth; ++d) {
+    std::vector<utils::wire_t> level_outputs(gates_per_level);
+
+    for (size_t i = 0; i < gates_per_level - 1; ++i) {
+      level_outputs[i] = circ.addGate(utils::GateType::kMul, level_inputs[i],
+                                      level_inputs[i + 1]);
+    }
+    level_outputs[gates_per_level - 1] =
+        circ.addGate(utils::GateType::kMul, level_inputs[gates_per_level - 1],
+                     level_inputs[0]);
+
+    level_inputs = std::move(level_outputs);
   }
-  outputs[num_mult_gates - 1] = circ.addGate(
-      utils::GateType::kMul, inputs[num_mult_gates - 1], inputs[0]);
+
+  for (auto i : level_inputs) {
+    circ.setAsOutput(i);
+  }
+
   return circ;
 }
-
 void benchmark(const bpo::variables_map& opts) {
   bool save_output = false;
   std::string save_file;
@@ -64,6 +75,7 @@ void benchmark(const bpo::variables_map& opts) {
   auto seed = opts["seed"].as<size_t>();
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
+  auto depth = opts["depth"].as<size_t>();
 
   std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1 = nullptr;
   std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network2 = nullptr;
@@ -98,6 +110,7 @@ void benchmark(const bpo::variables_map& opts) {
                             {"cm_threads", cm_threads},
                             {"cp_threads", cp_threads},
                             {"seed", seed},
+                            {"depth", depth},
                             {"repeat", repeat}};
   output_data["benchmarks"] = json::array();
 
@@ -107,7 +120,7 @@ void benchmark(const bpo::variables_map& opts) {
   }
   std::cout << std::endl;
 
-  auto circ = generateCircuit(gates).orderGatesByLevel();
+  auto circ = generateCircuit(gates, depth).orderGatesByLevel();
 
   std::unordered_map<utils::wire_t, int> input_pid_map;
   for (const auto& g : circ.gates_by_level[0]) {
@@ -177,6 +190,7 @@ bpo::options_description programOptions() {
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")
     ("port", bpo::value<int>()->default_value(10000), "Base port for networking.")
     ("output,o", bpo::value<std::string>(), "File to save benchmarks.")
+    ("depth,d", bpo::value<size_t>()->required(), "Multiplicative depth of circuit.")
     ("repeat,r", bpo::value<size_t>()->default_value(1), "Number of times to run benchmarks.");
 
   return desc;
