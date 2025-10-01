@@ -154,7 +154,7 @@ void benchmark(const bpo::variables_map& opts) {
     std::cout << "--- Repetition " << r + 1 << " ---\n";
     std::cout << "time: " << time << " ms\n";
     std::cout << "sent: " << bytes_sent << " bytes\n";
-    std::cout << "throughput: " << (gates * 1e3) / time //因为是ms，所以乘1000计算每秒的吞吐量
+    std::cout << "throughput: " << (gates*depth * 1e3) / time //因为是ms，所以乘1000计算每秒的吞吐量
               << " triples per second\n";
 
     output_data["benchmarks"].push_back(std::move(rbench));
