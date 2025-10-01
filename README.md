@@ -1,11 +1,14 @@
+
 # SemiHoRGod
 
-This directory contains the implementation of the SemiHoRGod fair protocol.
-The protocol is implemented in C++17 and [CMake](https://cmake.org/) is used as the build system.
+This directory contains the implementation of the SemiHoRGod protocol. Please refer to the implementation at [quadsquad](https://github.com/cris-iisc/quadsquad) for comparison.
+
+ **At the same time, we extend our sincere gratitude to Aditya Hegde et al. for providing the code framework in [quadsquad](https://github.com/cris-iisc/quadsquad), which has greatly facilitated our implementation of the paper's code. We are truly thankful.**
 
 ## External Dependencies
 The following libraries need to be installed separately and should be available to the build system and compiler.
 
+- C++17 and [CMake](https://cmake.org/)
 - [GMP](https://gmplib.org/)
 - [NTL](https://www.shoup.net/ntl/) (11.0.0 or later)
 - [Boost](https://www.boost.org/) (1.72.0 or later)
@@ -40,12 +43,9 @@ To compile, run the following commands from the root directory of the repository
 
 ```sh
 mkdir build && cd build
-# cmake -DCMAKE_BUILD_TYPE=Release ..
-cmake -DCMAKE_BUILD_TYPE=Debug ..
-
-# The two main targets are 'benchmarks' and 'tests' corresponding to
-# binaries used to run benchmarks and unit tests respectively.
-make <target>
+cmake -DCMAKE_BUILD_TYPE=Release .. 
+# cmake -DCMAKE_BUILD_TYPE=Debug .. #debug mode
+make -j
 ```
 
 ## Usage
@@ -54,23 +54,59 @@ All of them provide detailed usage description on using the `--help` option.
 
 - `benchmarks/online_mpc`: Benchmark the performance of the SemiHoRGod online phase by evaluating a circuit with a given depth and number of multiplication gates at each depth.
 - `benchmarks/online_nn`: Benchmark the performance of the SemiHoRGod online phase for neural network inference on the FCN and LeNet models.
+- `benchmarks/online_perm`: Benchmark the performance of the SemiHoRGod online phase for oblivious permutation.
 - `benchmarks/offline_mpc_tp`: Benchmark the performance of the SemiHoRGod offline phase for a circuit with given number of multiplication gates.
 - `benchmarks/offline_mpc_sub`: Benchmark the performance of the subprotocols used in the SemiHoRGod offline phase.
-- `benchmarks/sodo_gridlock_iter`: Benchmark the performance of an iteration of the sodoGR protocol of AST22 for liquidity matching.
+- `benchmarks/offline_nn`: Benchmark the performance of the SemiHoRGod offline phase for neural network inference on the FCN and LeNet models.
+- `benchmarks/offline_perm`: Benchmark the performance of the SemiHoRGod offline phase for oblivious permutation.
 - `tests/*`: These programs contain unit tests for various parts of the codebase. The test coverage is currently incomplete. However, the protocols have been manually verified for correctness.
 
-Execute the following commands from the `build` directory created during compilation to run the programs:
-```sh
-# Ferret OT requires the 'ot_data' directory to store pre-OT data.
-mkdir ot_data
 
+
+### Test and how to run locally
+
+Execute the following commands from the `build` directory created during compilation to run the programs:
+```bash
 # Run unit tests. Can be skipped.
-#
-# 'offline_test' is known to fail sometimes (especially on MacOS) because of 
-# running multiple instances of Ferret OT in different threads. However, this
-# is not an issue for benchmark programs.
 ctest
 
+# The `run.sh` script in the repository root can be used to run the programs 
+# for all parties from the same terminal.
+# For example, the previous benchmark can be run using the script as shown
+# below.
+../run.sh ./benchmarks/online_mpc -g 100 -d 10 -t 1
+
+# All other benchmark programs have similar options and behaviour. The '-h'
+# option can be used for detailed usage information.
+
+###############################################neural network inference###############################################
+# Benchmark online phase for neural network inference.
+../run.sh ./benchmarks/online_nn -n fcn
+../run.sh ./benchmarks/online_nn -n lenet
+
+# Benchmark offline phase for neural network inference.
+../run.sh ./benchmarks/offline_nn -n fcn
+../run.sh ./benchmarks/offline_nn -n lenet
+
+
+###############################################   MPC multiplication   ###############################################
+# Benchmark online phase for MPC multiplication.
+../run.sh ./benchmarks/offline_mpc_sub -g 1000000 -d 10 #-g number of multiplication || -d depth of multiplication
+
+# Benchmark offline phase for MPC multiplication.
+../run.sh ./benchmarks/online_mpc_sub -g 1000000 -d 10 #-g number of multiplication || -d depth of multiplication
+
+
+###############################################     MPC permutation    ###############################################
+# Benchmark online phase for MPC oblivious permutation.
+../run.sh ./benchmarks/online_perm -g 10000
+
+# Benchmark offline phase for MPC oblivious permutation.
+../run.sh ./benchmarks/offline_perm -g 10000
+```
+### How to run in different machines
+
+```bash
 # Benchmark online phase for MPC.
 #
 # The command below should be run on four different terminals with $PID set to
@@ -83,67 +119,35 @@ ctest
 # option with '--net-config <net_config.json>' where 'net_config.json' is a
 # JSON file containing the IPs of the parties. A template is given in the
 # repository root.
-./benchmarks/online_mpc -p $PID --localhost -g 100 -d 10
+./benchmarks/online_mpc -p $PID --localhost -g 100 -d 10 #command example
 
-# The `run.sh` script in the repository root can be used to run the programs 
-# for all parties from the same terminal.
-# For example, the previous benchmark can be run using the script as shown
-# below.
-../run.sh ./benchmarks/online_mpc -g 100 -d 10 -t 1
-
-#or use the folloing command:
-./benchmarks/online_mpc -p 0 --localhost -g 100 -d 10 -t 1>/dev/null &
-./benchmarks/online_mpc -p 1 --localhost -g 100 -d 10 -t 1>/dev/null &
-./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 -t 1>/dev/null &
-./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 -t 1>/dev/null &
+./benchmarks/online_mpc -p 0 --localhost -g 100 -d 10 -t 1
+./benchmarks/online_mpc -p 1 --localhost -g 100 -d 10 -t 1
+./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 -t 1
+./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 -t 1
 ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10 -t 1
-gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10 -t 1
-
-
-# All other benchmark programs have similar options and behaviour. The '-h'
-# option can be used for detailed usage information.
-
-# Benchmark online phase for neural network inference.
-../run.sh ./benchmarks/online_nn -n fcn
-
-# Benchmark offline phase for neural network inference.
-../run.sh ./benchmarks/offline_nn -n fcn
-
-# Benchmark offline phase for MPC.
-../run.sh ./benchmarks/offline_mpc_tp -g 1024
-
-# Benchmark subprotocols of offline phase for MPC.
-../run.sh ./benchmarks/offline_mpc_sub -g 1024
-
-# Benchmark an iteration of the sodoGR protocol of AST22 for liquidity matching.
-../run.sh ./benchmarks/sodo_gridlock_iter -b 256 -x 1000
+./benchmarks/online_mpc -p 5 --localhost -g 100 -d 10 -t 1
+./benchmarks/online_mpc -p 6 --localhost -g 100 -d 10 -t 1
 ```
-## Debug
-```sh
-# use gdb to debug the code. The following command used to fix the thread
-(gdb) set scheduler-locking on/step/off
 
+
+
+## How to Debug
+
+Make sure compiling the code using command `cmake -DCMAKE_BUILD_TYPE=Debug ..` at **debug mode**.
+
+```sh
 # observe the thread tree
 pstree -pul PID
 
+# run the code and using gdb to debug
 ./benchmarks/online_mpc -p 0 --localhost -g 100 -d 10 >/dev/null &
 ./benchmarks/online_mpc -p 1 --localhost -g 100 -d 10 >/dev/null &
 ./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 >/dev/null &
 ./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 >/dev/null &
 ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
-gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
+gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10  #using gdb with parameters
 
-./benchmarks/online_mpc -p 0 --localhost -g 100 -d 10 >/dev/null &
-./benchmarks/online_mpc -p 1 --localhost -g 100 -d 10 >/dev/null &
-./benchmarks/online_mpc -p 2 --localhost -g 100 -d 10 >/dev/null &
-./benchmarks/online_mpc -p 3 --localhost -g 100 -d 10 >/dev/null &
-valgrind --log-file=valgrind_p4.log ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
-
-
-./benchmarks/offline_mpc_tp -p 0 --localhost -g 100 >/dev/null &
-./benchmarks/offline_mpc_tp -p 1 --localhost -g 100 >/dev/null &
-./benchmarks/offline_mpc_tp -p 2 --localhost -g 100 >/dev/null &
-./benchmarks/offline_mpc_tp -p 3 --localhost -g 100 >/dev/null &
-./benchmarks/offline_mpc_tp -p 4 --localhost -g 100
-gdb --args ./benchmarks/online_mpc -p 4 --localhost -g 100 -d 10
+# If you run the test code, the following command used to fix the thread for debugging
+(gdb) set scheduler-locking on/step/off
 ```

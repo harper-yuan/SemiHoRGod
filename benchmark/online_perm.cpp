@@ -1,13 +1,12 @@
 #include <io/netmp.h>
 #include <SemiHoRGod/offline_evaluator.h>
 #include <utils/circuit.h>
-
+#include <SemiHoRGod/online_evaluator.h>
 #include <algorithm>
 #include <boost/program_options.hpp>
 #include <cmath>
 #include <iostream>
 #include <memory>
-
 #include "utils.h"
 
 #define BENCHMARK(acc, lbl, f, ...)            \
@@ -32,6 +31,23 @@
 using namespace SemiHoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
+
+utils::Circuit<Ring> generateCircuit(size_t num_mult_gates) {
+  utils::Circuit<Ring> circ;
+
+  std::vector<utils::wire_t> inputs(num_mult_gates);
+  std::generate(inputs.begin(), inputs.end(),
+                [&]() { return circ.newInputWire(); });
+
+  std::vector<utils::wire_t> outputs(num_mult_gates);
+  for (size_t i = 0; i < num_mult_gates - 1; ++i) {
+    outputs[i] = circ.addGate(utils::GateType::kMul, inputs[i], inputs[i + 1]);
+  }
+  outputs[num_mult_gates - 1] = circ.addGate(
+      utils::GateType::kMul, inputs[num_mult_gates - 1], inputs[0]);
+
+  return circ;
+}
 
 std::vector<Ring> generateRandomPermutation(emp::PRG& prg, uint64_t permutation_length) {
     std::vector<Ring> permutation;
@@ -94,8 +110,7 @@ void benchmark(const bpo::variables_map& opts) {
     }
 
     network1 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
-    network2 =
-        std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, ip.data(), false);
+    network2 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, ip.data(), false);
   }
 
   json output_data;
@@ -114,45 +129,44 @@ void benchmark(const bpo::variables_map& opts) {
   }
   std::cout << std::endl;
 
-  utils::LevelOrderedCircuit circ;
-
-  std::unordered_map<utils::wire_t, int> input_pid_map;
+  utils::LevelOrderedCircuit circ = generateCircuit(gates).orderGatesByLevel();;
 
   for (size_t r = 0; r < repeat; ++r) {
-    
-    OfflineEvaluator eval(pid, network1, network2, circ, security_param,
-                          cm_threads, seed);
 
-    
-    network1->sync();
-    network2->sync();
-
-    network1->resetStats();
-    network2->resetStats();
-
-    nlohmann::json rbench;
     emp::PRG prg(&seed, 0);
     vector<Ring> data_vector = generateRandomPermutation(prg, gates);
     vector<Ring> permutation_vector = generateRandomPermutation(prg, gates);
-    BENCHMARK(rbench, "offline_setwire", eval.dummy_permutation, circ, input_pid_map, security_param, pid, prg, data_vector, permutation_vector);
-    // BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
-    // BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
-    // BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);
-    // BENCHMARK(rbench, "c_terms", eval.computeCCrossTerms);
-    // BENCHMARK(rbench, "combine_cross_terms", eval.combineCrossTerms);
+    std::unordered_map<utils::wire_t, int> input_pid_map;
+    
+    OfflineEvaluator offline_eval(pid, network1, network2, circ, security_param, cm_threads, seed);
+    auto preproc =  offline_eval.dummy_permutation(circ, input_pid_map, security_param, pid, prg, data_vector, permutation_vector);
+    OnlineEvaluator online_eval(pid, network1, std::move(preproc), circ, security_param, 1);
+    // network1->sync();
+
+    network1->sync();
+    // online_eval.setInputs_perm(data_vector, permutation_vector);
+    StatsPoint start(*network1);
+    online_eval.evaluateCircuit_perm(data_vector, permutation_vector);
+    StatsPoint end(*network1);
+
+    // OnlineEvaluator online_eval1(pid, network2, std::move(preproc), circ, security_param, 1);
+    // StatsPoint start1(*network2);
+    // online_eval1.setInputs_perm(data_vector, permutation_vector);
+    // StatsPoint end1(*network2);
+
+    auto rbench = end - start;
+    // auto rbench1 = (end1 - start1);
+    output_data["benchmarks"].push_back(rbench);
+
+    size_t bytes_sent = 0;
+    for (const auto& val : rbench["communication"]) {
+      bytes_sent += val.get<int64_t>();
+    }
 
     std::cout << "--- Repetition " << r + 1 << " ---\n";
-    for (const auto& [key, value] : rbench.items()) {
-      size_t bytes_sent = 0;
-      for (const auto& i : value["communication"]) {
-        bytes_sent += i.get<size_t>();
-      }
-      std::cout << key << ": " << value["time"] << " ms, " << bytes_sent
-                << " bytes\n";
-    }
-    std::cout << std::endl;
-
-    output_data["benchmark"].push_back(std::move(rbench));
+    // std::cout << "sharing time: " << rbench1["time"] << " ms\n";
+    std::cout << "time: " << rbench["time"] << " ms\n";
+    std::cout << "sent: " << bytes_sent << " bytes\n";
 
     if (save_output) {
       saveJson(output_data, save_file);

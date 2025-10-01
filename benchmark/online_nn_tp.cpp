@@ -1,6 +1,8 @@
 #include <io/netmp.h>
 #include <SemiHoRGod/offline_evaluator.h>
+#include <SemiHoRGod/online_evaluator.h>
 #include <utils/circuit.h>
+#include <utils/neural_network.h>
 
 #include <algorithm>
 #include <boost/program_options.hpp>
@@ -10,49 +12,9 @@
 
 #include "utils.h"
 
-#define BENCHMARK(acc, lbl, f, ...)            \
-  ({                                           \
-    CommPoint net1_st(*network1);              \
-    CommPoint net2_st(*network2);              \
-    TimePoint start;                           \
-    f(__VA_ARGS__);                            \
-    TimePoint end;                             \
-    CommPoint net1_ed(*network1);              \
-    CommPoint net2_ed(*network2);              \
-    auto time = end - start;                   \
-    auto res1 = net1_ed - net1_st;             \
-    auto res2 = net2_ed - net2_st;             \
-    for (size_t i = 0; i < res1.size(); ++i) { \
-      res1[i] += res2[i];                      \
-    }                                          \
-    acc[lbl] = {{"time", time}};               \
-    acc[lbl]["communication"] = res1;          \
-  })
-
 using namespace SemiHoRGod;
 using json = nlohmann::json;
 namespace bpo = boost::program_options;
-
-std::vector<Ring> generateRandomPermutation(emp::PRG& prg, uint64_t permutation_length) {
-    std::vector<Ring> permutation;
-    
-    // 创建初始序列 [0, 1, 2, ..., n-1]
-    for (int i = 0; i < permutation_length; ++i) {
-      permutation.push_back(i);
-    }
-    
-    // 使用 Fisher-Yates 洗牌算法
-    for (int i = permutation_length - 1; i > 0; --i) {
-        // 生成 [0, i] 范围内的随机数
-        Ring rand_val;
-        prg.random_data(&rand_val, sizeof(Ring));
-        int j = rand_val % (i + 1);
-        
-        // 交换元素
-        std::swap(permutation[i], permutation[j]);
-    }
-    return permutation;
-  }
 
 void benchmark(const bpo::variables_map& opts) {
   bool save_output = false;
@@ -62,20 +24,20 @@ void benchmark(const bpo::variables_map& opts) {
     save_file = opts["output"].as<std::string>();
   }
 
-  auto gates = opts["gates"].as<size_t>();
   auto pid = opts["pid"].as<size_t>();
   auto security_param = opts["security-param"].as<size_t>();
-  auto cm_threads = opts["cm-threads"].as<size_t>();
-  auto cp_threads = opts["cp-threads"].as<size_t>();
+  auto threads = opts["threads"].as<size_t>();
   auto seed = opts["seed"].as<size_t>();
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
+  auto neural_network = opts["neural-network"].as<std::string>();
+  auto batch_size = opts["batch-size"].as<size_t>();
+  auto num_queries = opts["num-queries"].as<size_t>();
 
-  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1 = nullptr;
-  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network2 = nullptr;
+
+  std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network = nullptr;
   if (opts["localhost"].as<bool>()) {
-    network1 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, nullptr, true);
-    network2 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, nullptr, true);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, nullptr, true);
   } else {
     std::ifstream fnet(opts["net-config"].as<std::string>());
     if (!fnet.good()) {
@@ -93,19 +55,17 @@ void benchmark(const bpo::variables_map& opts) {
       ip[i] = ipaddress[i].data();
     }
 
-    network1 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
-    network2 =
-        std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, ip.data(), false);
+    network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
   }
 
   json output_data;
-  output_data["details"] = {{"gates", gates},
-                            {"pid", pid},
+  output_data["details"] = {{"pid", pid},
                             {"security_param", security_param},
-                            {"cm_threads", cm_threads},
-                            {"cp_threads", cp_threads},
+                            {"threads", threads},
                             {"seed", seed},
-                            {"repeat", repeat}};
+                            {"neural_network", neural_network},
+                            {"repeat", repeat},
+                            {"batch_size", batch_size}};
   output_data["benchmarks"] = json::array();
 
   std::cout << "--- Details ---\n";
@@ -115,53 +75,78 @@ void benchmark(const bpo::variables_map& opts) {
   std::cout << std::endl;
 
   utils::LevelOrderedCircuit circ;
+  if (neural_network == "fcn") {
+    circ = utils::NeuralNetwork<Ring>::fcnMNIST(batch_size)
+               .getCircuit()
+               .orderGatesByLevel();
+  } else {
+    circ = utils::NeuralNetwork<Ring>::lenetMNIST(batch_size)
+               .getCircuit()
+               .orderGatesByLevel();
+  }
+
+  std::cout << "--- Circuit ---\n";
+  std::cout << circ << std::endl;
 
   std::unordered_map<utils::wire_t, int> input_pid_map;
+  for (const auto& g : circ.gates_by_level[0]) {
+    if (g->type == utils::GateType::kInp) {
+      input_pid_map[g->out] = 0;
+    }
+  }
+
+  emp::PRG prg(&emp::zero_block, seed);
 
   for (size_t r = 0; r < repeat; ++r) {
-    
-    OfflineEvaluator eval(pid, network1, network2, circ, security_param,
-                          cm_threads, seed);
-
-    
-    network1->sync();
-    network2->sync();
-
-    network1->resetStats();
-    network2->resetStats();
-
-    nlohmann::json rbench;
-    emp::PRG prg(&seed, 0);
-    vector<Ring> data_vector = generateRandomPermutation(prg, gates);
-    vector<Ring> permutation_vector = generateRandomPermutation(prg, gates);
-    BENCHMARK(rbench, "offline_setwire", eval.dummy_permutation, circ, input_pid_map, security_param, pid, prg, data_vector, permutation_vector);
-    // BENCHMARK(rbench, "set_wire_masks", eval.setWireMasks, input_pid_map);
-    // BENCHMARK(rbench, "ab_terms", eval.computeABCrossTerms);
-    // BENCHMARK(rbench, "distributed_zkp", eval.distributedZKP);
-    // BENCHMARK(rbench, "c_terms", eval.computeCCrossTerms);
-    // BENCHMARK(rbench, "combine_cross_terms", eval.combineCrossTerms);
-
     std::cout << "--- Repetition " << r + 1 << " ---\n";
-    for (const auto& [key, value] : rbench.items()) {
-      size_t bytes_sent = 0;
-      for (const auto& i : value["communication"]) {
-        bytes_sent += i.get<size_t>();
-      }
-      std::cout << key << ": " << value["time"] << " ms, " << bytes_sent
-                << " bytes\n";
+    auto preproc =
+        OfflineEvaluator::dummy(circ, input_pid_map, security_param, pid, prg);
+
+    OnlineEvaluator eval(pid, network, std::move(preproc), circ, security_param,
+                         threads, seed);
+
+    network->sync();
+
+    std::cout << "Start evaluating " << "\n";
+    eval.setRandomInputs();
+    StatsPoint start(*network);
+    TimePoint start_t;
+    for (size_t _ = 0; _ < num_queries; _++) {
+        for (size_t i = 0; i < circ.gates_by_level.size(); ++i) {
+            eval.evaluateGatesAtDepth_parallel(i, threads);
+        }
     }
-    std::cout << std::endl;
+    TimePoint end_t;
+    StatsPoint end(*network);
+    std::cout << "End evaluating " << "\n";
+    auto rbench = end - start;
+    output_data["benchmarks"].push_back(rbench);
 
-    output_data["benchmark"].push_back(std::move(rbench));
+    auto time = end_t - start_t;
 
+    size_t bytes_sent = 0;
+    for (const auto& val : rbench["communication"]) {
+      bytes_sent += val.get<int64_t>();
+    }
+
+    
+    std::cout << "--- Repetition " << r + 1 << " ---\n";
+    std::cout << "time: " << time << " ms\n";
+    std::cout << "sent: " << bytes_sent << " bytes\n";
+    std::cout << "throughput: " << (num_queries * 1e3 * 60) / time //因为是ms，所以乘1000计算每秒的吞吐量
+              << " triples per min\n";
+
+    output_data["benchmarks"].push_back(std::move(rbench));
     if (save_output) {
       saveJson(output_data, save_file);
     }
     std::cout << std::endl;
   }
-
+  std::cout << "Following is the memory: " << "\n";
   output_data["stats"] = {{"peak_virtual_memory", peakVirtualMemory()},
                           {"peak_resident_set_size", peakResidentSetSize()}};
+  // output_data["stats"] = {{"peak_virtual_memory", 1},
+  //                         {"peak_resident_set_size", 1}};
 
   std::cout << "--- Statistics ---\n";
   for (const auto& [key, value] : output_data["stats"].items()) {
@@ -178,16 +163,17 @@ void benchmark(const bpo::variables_map& opts) {
 bpo::options_description programOptions() {
   bpo::options_description desc("Following options are supported by config file too.");
   desc.add_options()
-    ("gates,g", bpo::value<size_t>()->required(), "Number of multiplication gates.")
+    ("neural-network,n", bpo::value<std::string>()->required(), "Network name (fcn | lenet).")
+    ("batch-size", bpo::value<size_t>()->default_value(1), "Input batch size.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("cm-threads", bpo::value<size_t>()->default_value(1), "Number of threads for communication (recommended 6).")
-    ("cp-threads", bpo::value<size_t>()->default_value(1), "Number of threads for computation.")
+    ("threads,t", bpo::value<size_t>()->default_value(1), "Number of threads (recommended 6).")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")
     ("port", bpo::value<int>()->default_value(10000), "Base port for networking.")
     ("output,o", bpo::value<std::string>(), "File to save benchmarks.")
+    ("num-queries", bpo::value<size_t>()->default_value(1), "Number of queries (recommended 1).")
     ("repeat,r", bpo::value<size_t>()->default_value(1), "Number of times to run benchmarks.");
 
   return desc;
@@ -198,7 +184,7 @@ int main(int argc, char* argv[]) {
   auto prog_opts(programOptions());
 
   bpo::options_description cmdline(
-      "Benchmark triple generation in offline phase.");
+      "Benchmark online phase for multiplication gates.");
   cmdline.add(prog_opts);
   cmdline.add_options()(
       "config,c", bpo::value<std::string>(),
@@ -241,6 +227,12 @@ int main(int argc, char* argv[]) {
 
     if (!opts["localhost"].as<bool>() && (opts.count("net-config") == 0)) {
       throw std::runtime_error("Expected one of 'localhost' or 'net-config'");
+    }
+
+    auto neural_network = opts["neural-network"].as<std::string>();
+    if (neural_network != "lenet" && neural_network != "fcn") {
+      throw std::runtime_error(
+          "Expected neural-network to be one of 'fcn' or lenet'.");
     }
   } catch (const std::exception& ex) {
     std::cerr << ex.what() << std::endl;

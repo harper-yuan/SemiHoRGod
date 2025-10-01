@@ -28,16 +28,12 @@ void ImprovedJmp::reset() {
         is_received3_[i][j][k] = false;
         
       }
-      
     }
   }
 }
 
-bool ImprovedJmp::isHashSender(int sender, int other_sender, int receiver) { //确定某组三人中，谁负责发送哈希
-  if (other_sender == pidFromOffset(sender, 1)) {
-    return receiver == pidFromOffset(sender, 3);
-  }
-  return receiver == pidFromOffset(sender, 1);
+bool ImprovedJmp::isHashSender(int sender, int other_sender1, int other_sender2, int receiver) { //确定某组三人中，谁负责发送哈希
+  return (sender > other_sender1) && (sender > other_sender2); //规定3个人中，number数大的传数据
 }
 
 void ImprovedJmp::jumpUpdate(int sender1, int sender2, int sender3, int receiver,
@@ -64,24 +60,29 @@ void ImprovedJmp::jumpUpdate(int sender1, int sender2, int sender3, int receiver
 
   //只剩下，id_为发送者的情况，直接发送数据即可
   auto [other_sender1, other_sender2] = findOtherSenders(min, mid, max, id_);
-  const auto* temp = static_cast<const uint8_t*>(data);
-  auto& values = send_values_[other_sender1][other_sender2][receiver];
-  values.insert(values.end(), temp, temp + nbytes); //在指定位置 pos 之前插入 [first, last) 区间的数据。
+  if (isHashSender(id_, other_sender1, other_sender2, receiver)) {
+    send_hash_[other_sender1][other_sender2][receiver].put(data, nbytes);
+  }
+  else {
+    const auto* temp = static_cast<const uint8_t*>(data);
+    auto& values = send_values_[other_sender1][other_sender2][receiver];
+    values.insert(values.end(), temp, temp + nbytes); //在指定位置 pos 之前插入 [first, last) 区间的数据。
+  }
   send_[other_sender1][other_sender2][receiver] = true;
 }
 
 void ImprovedJmp::communicate(io::NetIOMP<NUM_PARTIES>& network, ThreadPool& tpool) {
   std::vector<std::future<void>> res; // std::future<void>作用：表示一个异步操作的结果（来自 std::async、std::promise 或线程池任务）。
-
+  
   // Send data.
-  for (int receiver = 0; receiver < NUM_PARTIES ; ++receiver) {
+  for (int receiver = 0; receiver < NUM_PARTIES; ++receiver) {
     if (receiver == id_) { //如果id_是接收者，不用发送数据，于是跳过
       continue;
     }
     //下面的情况，id_一定是发送者，所以遍历所有可能的发送情况，是否需要发送查询send_即可
     res.push_back(tpool.enqueue([&, receiver]() {
-      for (int other_sender1 = 0; other_sender1 < NUM_PARTIES ; ++other_sender1) {
-        for (int other_sender2 = 0; other_sender2 < NUM_PARTIES ; ++other_sender2) {//已经确定了
+      for (int other_sender1 = 0; other_sender1 < NUM_PARTIES; ++other_sender1) {
+        for (int other_sender2 = other_sender1+1; other_sender2 < NUM_PARTIES; ++other_sender2) {//已经确定了
           if (other_sender1 == receiver || other_sender1 == id_ ||
               other_sender2 == receiver || other_sender2 == id_ || other_sender1 == other_sender2) { //确保id_一定是发送者
             continue;
@@ -100,8 +101,19 @@ void ImprovedJmp::communicate(io::NetIOMP<NUM_PARTIES>& network, ThreadPool& tpo
           auto& values = send_values_[min][max][receiver];
           bool should_send = send_[min][max][receiver];
           if (should_send) {
-            // std::array<char, emp::Hash::DIGEST_SIZE> digest{};
-            network.send(receiver, values.data(), values.size());
+            if(isHashSender(id_, min, max, receiver)) {
+              auto& hash = send_hash_[min][max][receiver];
+              std::array<char, emp::Hash::DIGEST_SIZE> digest{};
+              hash.digest(digest.data());
+              // std::cout<<"send: "<<receiver<<" hash values"<<endl;
+              network.send(receiver, digest.data(), digest.size());
+              
+            }
+            else {
+              // std::cout<<"send: "<<receiver<<" "<<values.size()<<" Btyes"<<endl;
+              network.send(receiver, values.data(), values.size());
+            }
+            // std::cout<<"id="<<id_<<": "<<min<<", "<<max<<"->"<<receiver<<", "<<values.size()<<"Bytes"<<endl;
           }
         }
       }
@@ -109,17 +121,21 @@ void ImprovedJmp::communicate(io::NetIOMP<NUM_PARTIES>& network, ThreadPool& tpo
       network.flush(receiver);
     }));
   }
-
+  for (auto& f : res) {
+    f.get();
+  }
+  std::vector<std::future<void>> res_recv;
+  // std::cout<<"have send"<<endl;
   // Receive data.
-  std::array<std::array<std::array<char, emp::Hash::DIGEST_SIZE>, NUM_PARTIES>, NUM_PARTIES> recv_hash{};
-  for (int sender = 0; sender < NUM_PARTIES ; ++sender) {
+  std::array<std::array<std::array<std::array<char, emp::Hash::DIGEST_SIZE>, NUM_PARTIES>, NUM_PARTIES>,NUM_PARTIES> recv_hash{};
+  for (int sender = 0; sender < NUM_PARTIES; ++sender) {
     if (sender == id_) { //如果id_是发送者，则不需要接收数据
       continue;
     }
 
-    res.push_back(tpool.enqueue([&, sender]() {
-      for (int other_sender1 = 0; other_sender1 < NUM_PARTIES ; ++other_sender1) {
-        for (int other_sender2 = 0; other_sender2 < NUM_PARTIES ; ++other_sender2) {
+    res_recv.push_back(tpool.enqueue([&, sender]() {
+      for (int other_sender1 = 0; other_sender1 < NUM_PARTIES; ++other_sender1) {
+        for (int other_sender2 = other_sender1+1; other_sender2 < NUM_PARTIES; ++other_sender2) {
           if (other_sender1 == sender || other_sender1 == id_ ||
               other_sender2 == sender || other_sender2 == id_ || other_sender1 == other_sender2) { //彻底排除id_是发送者的可能，下面的代码中id_一定是接受者，是否接收查询recv_lengths_是否大于0
             continue;
@@ -131,55 +147,56 @@ void ImprovedJmp::communicate(io::NetIOMP<NUM_PARTIES>& network, ThreadPool& tpo
             if (is_received1_[min][mid][max]) {
               auto& values = recv_values1_[min][mid][max];
               values.resize(values.size() + nbytes);
-              network.recv(sender, values.data() + values.size() - nbytes, nbytes);//收到的值会被放在数组末尾
+              // std::cout<<"receive: "<<min<<" "<<nbytes<<" Btyes"<<endl;
+              network.recv(min, values.data() + values.size() - nbytes, nbytes);//收到的值会被放在数组末尾
               is_received1_[min][mid][max] = false;
+              
             }
             else if (is_received2_[min][mid][max]) {
               auto& values = recv_values2_[min][mid][max];
               values.resize(values.size() + nbytes);
-              network.recv(sender, values.data() + values.size() - nbytes, nbytes);//收到的值会被放在数组末尾
+              // std::cout<<"receive: "<<mid<<" "<<nbytes<<" Btyes"<<endl;
+              network.recv(mid, values.data() + values.size() - nbytes, nbytes);//收到的值会被放在数组末尾
               is_received2_[min][mid][max] = false;
+              
             }
             else {
-              auto& values = recv_values3_[min][mid][max];
-              values.resize(values.size() + nbytes);
-              network.recv(sender, values.data() + values.size() - nbytes, nbytes);//收到的值会被放在数组末尾
-              is_received3_[min][mid][max] = false;
+              // std::cout<<"receive: "<<max<<" hash values"<<endl;
+              network.recv(max, recv_hash[min][mid][max].data(), emp::Hash::DIGEST_SIZE);
+              
             }
           }
         }
       }
+      network.flush(sender);
     }));
   }
-
-  for (auto& f : res) {
+  
+  for (auto& f : res_recv) {
     f.get();
   }
-
+  // std::cout<<"have recived"<<endl;
   // Verify.
   emp::Hash hash;
-  // std::array<char, emp::Hash::DIGEST_SIZE> digest{};
-  for (int sender1 = 0; sender1 < NUM_PARTIES ; ++sender1) {
-    for (int sender2 = sender1 + 1; sender2 < NUM_PARTIES ; ++sender2) {
-      for (int sender3 = sender2 + 1; sender3 < NUM_PARTIES ; ++sender3) {
+  std::array<char, emp::Hash::DIGEST_SIZE> digest{};
+  for (int sender1 = 0; sender1 < NUM_PARTIES; ++sender1) {
+    for (int sender2 = sender1 + 1; sender2 < NUM_PARTIES; ++sender2) {
+      for (int sender3 = sender2 + 1; sender3 < NUM_PARTIES; ++sender3) {
         if (sender1 == id_ || sender2 == id_ || sender3 == id_) {
           continue;
         }
-
         auto nbytes = recv_lengths_[sender1][sender2][sender3];
         auto& values1 = recv_values1_[sender1][sender2][sender3];
         auto& values2 = recv_values2_[sender1][sender2][sender3];
-        auto& values3 = recv_values3_[sender1][sender2][sender3];
         auto& final_values = final_recv_values_[sender1][sender2][sender3];
 
-        
-        if (!values1.empty() && !values2.empty() && !values3.empty()) {
-          if (isEqual(values1, values2)) {
-            final_values = values1;
-          }
-          else{
-            final_values = values3;
-          }
+        hash.put(values1.data(), values1.size());
+        hash.digest(digest.data());
+        if (digest != recv_hash[sender1][sender2][sender3]) { //校验哈希值
+          final_values = values2;
+        }
+        else {
+          final_values = values1;
         }
       }
     }

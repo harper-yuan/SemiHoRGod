@@ -13,6 +13,7 @@
 #include "sharing.h"
 #include "types.h"
 #include "helpers.h"
+#include <omp.h>
 using namespace SemiHoRGod;
 namespace SemiHoRGod {
 class OnlineEvaluator {
@@ -71,6 +72,7 @@ class OnlineEvaluator {
   // Evaluate gates at depth 'depth'.
   // This method should be called in increasing order of 'depth' values.
   void evaluateGatesAtDepth(size_t depth);
+  void evaluateGatesAtDepth_parallel(size_t depth, size_t computation_threads);
   // Compute and returns circuit outputs.
   std::vector<Ring> getOutputs();
   std::vector<Ring> getOutputs_perm();
@@ -81,8 +83,8 @@ class OnlineEvaluator {
   // Evaluate online phase for circuit.
   std::vector<Ring> evaluateCircuit(
       const std::unordered_map<utils::wire_t, Ring>& inputs);
-
   std::vector<Ring> evaluateCircuit_perm(vector<Ring> data_vector, vector<Ring> permutation_vector);
+  void evaluateCircuit_perm_no_input(vector<Ring> data_vector, vector<Ring> permutation_vector);
 };
 
 // Helper class to efficiently evaluate online phase on boolean circuit.

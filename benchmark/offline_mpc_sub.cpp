@@ -88,8 +88,7 @@ void benchmark(const bpo::variables_map& opts) {
     }
 
     network1 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port, ip.data(), false);
-    network2 =
-        std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, ip.data(), false);
+    network2 = std::make_shared<io::NetIOMP<NUM_PARTIES>>(pid, port + 100, ip.data(), false);
   }
 
   json output_data;

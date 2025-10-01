@@ -598,7 +598,7 @@ PreprocCircuit<Ring> OfflineEvaluator::getPreproc() {
 PreprocCircuit<Ring> OfflineEvaluator::run(const utils::LevelOrderedCircuit& circ,
     const std::unordered_map<utils::wire_t, int>& input_pid_map,
     size_t security_param, int pid, emp::PRG& prg) {
-  offline_setwire(circ, input_pid_map, security_param, id_, prg);
+  preproc_ = offline_setwire(circ, input_pid_map, security_param, id_, prg);
   return std::move(preproc_);
 }
 
@@ -1060,10 +1060,9 @@ std::array<vector<Ring>, 22> OfflineEvaluator::reshare_gen_random_vector(int pid
   std::array<vector<Ring>, 22> result;
   for(int j =  0; j < array_length; j++) {
     Ring sum_temp = 0;
-    Ring temp = 10000;
+    Ring temp;
     for(int i = 0; i < 21; i++) {
-      temp += i*i + 100*i;
-      // rgen.getComplement(pid).random_data(&temp, sizeof(Ring));
+      rgen.getComplement(pid).random_data(&temp, sizeof(Ring));
       // temp = temp % (1ULL<<8);
       result[i].push_back(temp);
       sum_temp += temp;
@@ -1115,21 +1114,18 @@ PreprocCircuit_permutation<Ring> OfflineEvaluator::dummy_permutation(
   //start to offline
   
   std::array<std::array<int,2>,21> Index = {{
-      {0,1}, {0,2}, {0,3}, {0,4}, {0,5}, {0,6}, 
-      {1,2}, {1,3}, {1,4}, {1,5}, {1,6},
-      {2,3}, {2,4}, {2,5}, {2,6},
-      {3,4}, {3,5}, {3,6},
-      {4,5}, {4,6},
-      {5,6}
+    {0,1}, {0,2}, {0,3}, {0,4}, {0,5}, {0,6}, 
+    {1,2}, {1,3}, {1,4}, {1,5}, {1,6},
+    {2,3}, {2,4}, {2,5}, {2,6},
+    {3,4}, {3,5}, {3,6},
+    {4,5}, {4,6},
+    {5,6}
   }};
   vector<vector<Ring>> saved_beta(Index.size());
   // sleep(pid);
   // std::cout<<"pid: "<<pid<<endl;
-  
+  auto random_vector_array = reshare_gen_random_vector(pid, rgen_, nf);
   for(int i = 0 ; i < Index.size(); i++) { //遍历所有可能性
-    if(i == 3 && pid == 6) {
-      std::cout<<endl;
-    }
     size_t nbytes = sizeof(Ring) * nf;
     auto [i_temp,j_temp,k_temp,l_temp,m_temp] = findRemainingNumbers_7PC(Index[i][0], Index[i][1]);
     auto n_temp = Index[i][0];
@@ -1139,7 +1135,7 @@ PreprocCircuit_permutation<Ring> OfflineEvaluator::dummy_permutation(
       applyPermutation(alpha_i, data_sharing_vec);
       
       //reshare protocol
-      auto random_vector_array = reshare_gen_random_vector(pid, rgen_, nf);
+      
       saved_beta[upperTriangularToArray(Index[i][0], Index[i][1])] = random_vector_array[21]; //每一方总共能存21个，而且是按照顺序存的。
       for(int j = 0; j < nf; j++) { //遍历所有共享
         for(int k= 0; k<Index.size(); k++) { //每一方遍历自己的所有共享
