@@ -59,6 +59,62 @@ utils::Circuit<Ring> generateCircuit(size_t gates_per_level, size_t depth) {
 
   return circ;
 }
+
+
+utils::Circuit<Ring> generateTrdotpCircuit(size_t gates_per_level, size_t depth) {
+  utils::Circuit<Ring> circ;
+
+  // 初始化输入向量
+  std::vector<utils::wire_t> vwa(gates_per_level);
+  std::vector<utils::wire_t> vwb(gates_per_level);
+
+  std::generate(vwa.begin(), vwa.end(), [&]() { return circ.newInputWire(); });
+  std::generate(vwb.begin(), vwb.end(), [&]() { return circ.newInputWire(); });
+
+  utils::wire_t wdotp;
+
+  // 可以堆叠多个层次的截断向量内积
+  for (size_t d = 0; d < depth; ++d) {
+    wdotp = circ.addGate(utils::GateType::kTrdotp, vwa, vwb);
+
+    // 下一层把结果当作新的输入向量的第一个元素，其他补新输入
+    vwa.clear();
+    vwb.clear();
+    vwa.push_back(wdotp);
+    // vwb.push_back(circ.newInputWire());  // 可选：用新的输入和之前的结果结合
+  }
+
+  circ.setAsOutput(wdotp);
+
+  // 最后按层次排序电路
+  return circ;
+}
+
+utils::Circuit<Ring> generateReluCircuit(size_t gates_per_level, size_t depth) {
+  utils::Circuit<Ring> circ;
+
+  std::vector<utils::wire_t> level_inputs(gates_per_level);
+  std::generate(level_inputs.begin(), level_inputs.end(),
+                [&]() { return circ.newInputWire(); });
+
+  for (size_t d = 0; d < depth; ++d) {
+    std::vector<utils::wire_t> level_outputs(gates_per_level);
+
+    for (size_t i = 0; i < gates_per_level; ++i) {
+      // 为每个输入添加 ReLU 激活函数
+      level_outputs[i] = circ.addGate(utils::GateType::kRelu, level_inputs[i]);
+    }
+
+    level_inputs = std::move(level_outputs);
+  }
+
+  for (auto i : level_inputs) {
+    circ.setAsOutput(i);
+  }
+
+  return circ;
+}
+
 void benchmark(const bpo::variables_map& opts) {
   bool save_output = false;
   std::string save_file;
@@ -76,6 +132,7 @@ void benchmark(const bpo::variables_map& opts) {
   auto repeat = opts["repeat"].as<size_t>();
   auto port = opts["port"].as<int>();
   auto depth = opts["depth"].as<size_t>();
+  auto gate_type = opts["gate-type"].as<std::string>();
 
   std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1 = nullptr;
   std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network2 = nullptr;
@@ -111,6 +168,7 @@ void benchmark(const bpo::variables_map& opts) {
                             {"cp_threads", cp_threads},
                             {"seed", seed},
                             {"depth", depth},
+                            {"gate_type", gate_type},
                             {"repeat", repeat}};
   output_data["benchmarks"] = json::array();
 
@@ -120,7 +178,20 @@ void benchmark(const bpo::variables_map& opts) {
   }
   std::cout << std::endl;
 
-  auto circ = generateCircuit(gates, depth).orderGatesByLevel();
+  SemiHoRGod::utils::LevelOrderedCircuit circ;
+  if(gate_type == "kMul") {
+    circ = generateCircuit(gates, depth).orderGatesByLevel();
+  }
+  else if (gate_type == "kRelu")
+  {
+    circ = generateReluCircuit(gates, depth).orderGatesByLevel();
+  }
+  else if (gate_type == "kTrdotp") {
+    circ = generateTrdotpCircuit(gates, depth).orderGatesByLevel();
+  }
+  else {
+    circ = generateCircuit(gates, depth).orderGatesByLevel();
+  }
 
   std::unordered_map<utils::wire_t, int> input_pid_map;
   for (const auto& g : circ.gates_by_level[0]) {
@@ -191,6 +262,7 @@ bpo::options_description programOptions() {
     ("port", bpo::value<int>()->default_value(10000), "Base port for networking.")
     ("output,o", bpo::value<std::string>(), "File to save benchmarks.")
     ("depth,d", bpo::value<size_t>()->required(), "Multiplicative depth of circuit.")
+    ("gate-type", bpo::value<std::string>()->default_value("kMul"), "Type of gates.")
     ("repeat,r", bpo::value<size_t>()->default_value(1), "Number of times to run benchmarks.");
 
   return desc;
