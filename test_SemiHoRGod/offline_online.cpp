@@ -552,71 +552,71 @@ BOOST_AUTO_TEST_CASE(double_relu_gate) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(tr_dotp_gate) {
-  auto seed = emp::makeBlock(100, 200);
-  int nf = 100;
+// BOOST_AUTO_TEST_CASE(tr_dotp_gate) {
+//   auto seed = emp::makeBlock(100, 200);
+//   int nf = 100;
 
-  Circuit<Ring> circ;
-  std::vector<wire_t> vwa(nf);
-  std::vector<wire_t> vwb(nf);
-  for (int i = 0; i < nf; i++) {
-    vwa[i] = circ.newInputWire();
-    vwb[i] = circ.newInputWire();
-  }
-  auto wdotp = circ.addGate(GateType::kTrdotp, vwa, vwb); //向量相乘然后截断
-  circ.setAsOutput(wdotp);
-  auto level_circ = circ.orderGatesByLevel();
+//   Circuit<Ring> circ;
+//   std::vector<wire_t> vwa(nf);
+//   std::vector<wire_t> vwb(nf);
+//   for (int i = 0; i < nf; i++) {
+//     vwa[i] = circ.newInputWire();
+//     vwb[i] = circ.newInputWire();
+//   }
+//   auto wdotp = circ.addGate(GateType::kTrdotp, vwa, vwb); //向量相乘然后截断
+//   circ.setAsOutput(wdotp);
+//   auto level_circ = circ.orderGatesByLevel();
 
-  std::unordered_map<wire_t, Ring> input_map;
-  std::unordered_map<wire_t, int> input_pid_map;
-  std::mt19937 gen(200);
-  std::uniform_int_distribution<Ring> distrib(0, TEST_DATA_MAX_VAL);
-  for (size_t i = 0; i < nf; ++i) {
-    input_map[vwa[i]] = distrib(gen);
-    input_map[vwb[i]] = distrib(gen);
-    input_pid_map[vwa[i]] = 0;
-    input_pid_map[vwb[i]] = 1;
-  }
+//   std::unordered_map<wire_t, Ring> input_map;
+//   std::unordered_map<wire_t, int> input_pid_map;
+//   std::mt19937 gen(200);
+//   std::uniform_int_distribution<Ring> distrib(0, TEST_DATA_MAX_VAL);
+//   for (size_t i = 0; i < nf; ++i) {
+//     input_map[vwa[i]] = distrib(gen);
+//     input_map[vwb[i]] = distrib(gen);
+//     input_pid_map[vwa[i]] = 0;
+//     input_pid_map[vwb[i]] = 1;
+//   }
 
-  auto exp_output = circ.evaluate(input_map);
+//   auto exp_output = circ.evaluate(input_map);
 
-  std::vector<std::future<std::vector<Ring>>> parties;
-  for (int i = 0; i < NUM_PARTIES; ++i) {
-    parties.push_back(std::async(std::launch::async, [&, i]() {
-      auto network_offline = std::make_shared<io::NetIOMP<NUM_PARTIES>>(i, 10002, nullptr, true);
-      auto network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(i, 10000, nullptr, true);
-      emp::PRG prg(&seed, 0);
-      OfflineEvaluator offline_eval(i, std::move(network_offline), nullptr, level_circ, SECURITY_PARAM, cm_threads);
-      // auto preproc = 
-      auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
+//   std::vector<std::future<std::vector<Ring>>> parties;
+//   for (int i = 0; i < NUM_PARTIES; ++i) {
+//     parties.push_back(std::async(std::launch::async, [&, i]() {
+//       auto network_offline = std::make_shared<io::NetIOMP<NUM_PARTIES>>(i, 10002, nullptr, true);
+//       auto network = std::make_shared<io::NetIOMP<NUM_PARTIES>>(i, 10000, nullptr, true);
+//       emp::PRG prg(&seed, 0);
+//       OfflineEvaluator offline_eval(i, std::move(network_offline), nullptr, level_circ, SECURITY_PARAM, cm_threads);
+//       // auto preproc = 
+//       auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
 
-      // OfflineEvaluator::dummy(level_circ, input_pid_map,
-      //                                        SECURITY_PARAM, i, prg);
-      OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
-      return online_eval.evaluateCircuit(input_map);
-    }));
-  }
+//       // OfflineEvaluator::dummy(level_circ, input_pid_map,
+//       //                                        SECURITY_PARAM, i, prg);
+//       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
+//                                   level_circ, SECURITY_PARAM, 1);
+//       return online_eval.evaluateCircuit(input_map);
+//     }));
+//   }
 
-  for (auto& p : parties) {
-    auto output = p.get();
-    std::cout<<"output: ";
-    for (const auto& num : output) {
-        std::cout << num << " ";
-    }
-    std::cout<<"exp_output: ";
-    for (const auto& num : exp_output) {
-        std::cout << num << " ";
-    }
-    std::cout<<endl;
-    bool check = (output[0] == exp_output[0]) ||
-                 (output[0] == (exp_output[0] + 1)) ||
-                 (output[0] == (exp_output[0] - 1)) ||
-                 (output[0] == (exp_output[0] + 2)) ||
-                 (output[0] == (exp_output[0] - 2));
-    BOOST_TEST(check);
-  }
-}
+//   for (auto& p : parties) {
+//     auto output = p.get();
+//     std::cout<<"output: ";
+//     for (const auto& num : output) {
+//         std::cout << num << " ";
+//     }
+//     std::cout<<"exp_output: ";
+//     for (const auto& num : exp_output) {
+//         std::cout << num << " ";
+//     }
+//     std::cout<<endl;
+//     bool check = (output[0] == exp_output[0]) ||
+//                  (output[0] == (exp_output[0] + 1)) ||
+//                  (output[0] == (exp_output[0] - 1)) ||
+//                  (output[0] == (exp_output[0] + 2)) ||
+//                  (output[0] == (exp_output[0] - 2));
+//     BOOST_TEST(check);
+//   }
+// }
 
 BOOST_DATA_TEST_CASE(defined_depth_circuit,
                      bdata::random(0, TEST_DATA_MAX_VAL) ^

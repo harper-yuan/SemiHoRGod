@@ -74,8 +74,12 @@ class OfflineEvaluator {
   std::vector<ReplicatedShare<Ring>> randomShareWithParty_for_trun(int id, RandGenPool& rgen, std::vector<std::pair<int, int>> indices);
   //Used for multiplication to compute α_{xy}
   ReplicatedShare<Ring> compute_prod_mask(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2);
+  ReplicatedShare<Ring> compute_prod_mask_part1(ReplicatedShare<Ring> mask_in1, ReplicatedShare<Ring> mask_in2);
+  void compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, size_t idx);
 
   ReplicatedShare<Ring> compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1, vector<ReplicatedShare<Ring>> mask_in2);
+  ReplicatedShare<Ring> compute_prod_mask_dot_part1(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec);
+  void compute_prod_mask_dot_part2(ReplicatedShare<Ring>& mask_prod, size_t idx);
 
   //given sharings of three random number r1, r2, r3, generating the every bit sharing of r = r1 xor r2 xor r3
   ReplicatedShare<Ring> bool_mul(ReplicatedShare<Ring> a, ReplicatedShare<Ring> b);
@@ -107,6 +111,10 @@ class OfflineEvaluator {
 
   // secure preprocessing
   PreprocCircuit<Ring> offline_setwire(
+      const utils::LevelOrderedCircuit& circ,
+      const std::unordered_map<utils::wire_t, int>& input_pid_map,
+      size_t security_param, int pid, emp::PRG& prg);
+  PreprocCircuit<Ring> offline_setwire_no_batch(
       const utils::LevelOrderedCircuit& circ,
       const std::unordered_map<utils::wire_t, int>& input_pid_map,
       size_t security_param, int pid, emp::PRG& prg);
