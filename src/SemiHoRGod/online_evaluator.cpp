@@ -1301,7 +1301,6 @@ void OnlineEvaluator::evaluateGatesAtDepth_parallel(size_t depth, size_t computa
   }
 }
 
-
 std::vector<Ring> OnlineEvaluator::reconstruct(
     const std::vector<ReplicatedShare<Ring>>& shares) {
   std::array<std::vector<Ring>, NUM_RSS> recon_shares;

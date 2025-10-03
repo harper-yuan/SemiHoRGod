@@ -987,7 +987,6 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire_no_batch(
         
           //生成r的每一比特共享
           auto [r_1_every_bit, r_2_every_bit] = comute_random_r_every_bit_sharing(id_, r_mask_vec, indices);
-          //最后计算随机数r的共享和r^d的共享
 
           for(int i = 0; i<N; i++) {
             r_1 += r_1_every_bit[i].cosnt_mul((1ULL << i));
@@ -1100,24 +1099,42 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
   PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
   
   std::vector<DummyShare<Ring>> wires(circ.num_gates);
+
+  vector<ReplicatedShare<Ring>> mask_prod_vec;
+
+  // for truncation
+  vector<ReplicatedShare<Ring>> r_trunted_d_vec;
+  vector<ReplicatedShare<Ring>> r_vec;
+
+  // for relu
+  vector<ReplicatedShare<Ring>> mask_output_alpha_vec;
+  vector<ReplicatedShare<Ring>> mask_mu_1_share_vec;
+  vector<ReplicatedShare<Ring>> mask_mu_2_share_vec;
+  vector<Ring> beta_mu_1_vec;
+  vector<Ring> beta_mu_2_vec;
+  vector<ReplicatedShare<Ring>> prev_mask_vec;
+  vector<ReplicatedShare<Ring>> mask_for_mul_vec;
   for (const auto& level : circ.gates_by_level) {
+    // std::cout<<"层开始"<<endl;
     jump_.reset();
-    vector<ReplicatedShare<Ring>> mask_prod_vec;
-
-    // for truncation
-    vector<ReplicatedShare<Ring>> r_trunted_d_vec;
-    vector<ReplicatedShare<Ring>> r_vec;
-
-    // for relu
-    vector<ReplicatedShare<Ring>> mask_output_alpha_vec;
-    vector<ReplicatedShare<Ring>> mask_mu_1_share_vec;
-    vector<ReplicatedShare<Ring>> mask_mu_2_share_vec;
-    vector<Ring> beta_mu_1_vec;
-    vector<Ring> beta_mu_2_vec;
-    vector<ReplicatedShare<Ring>> prev_mask_vec;
-    vector<ReplicatedShare<Ring>> mask_for_mul_vec;
     
+    mask_prod_vec.clear();
+    r_trunted_d_vec.clear();
+    r_vec.clear();
+    mask_output_alpha_vec.clear();
+    mask_mu_1_share_vec.clear();
+    mask_mu_2_share_vec.clear();
+    beta_mu_1_vec.clear();
+    beta_mu_2_vec.clear();
+    prev_mask_vec.clear();
+    mask_for_mul_vec.clear();
+
+    size_t count = 0;
+    // std::cout<<endl;
     for (const auto& gate : level) {
+      // std::cout<<"\r"<<gate->type<<": "<<count;
+      // count++;
+      
       switch (gate->type) {
         case utils::GateType::kMul: {
           //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
@@ -1182,7 +1199,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
 
           ReplicatedShare<Ring> r_1, r_2;
           ReplicatedShare<Ring> r_1_trunted_d, r_2_trunted_d;
-          r_1.init_zero(); r_2.init_zero(); 
+          r_1.init_zero(); r_2.init_zero();
           r_1_trunted_d.init_zero(); r_2_trunted_d.init_zero();
           //首先生成r1,r2,r3的共享，按照表格的内容生成
           std::vector<std::pair<int, int>> indices = { {0,1}, {0,2}, {1,2}, {3,4}, {5,6}, {0,3},
@@ -1190,18 +1207,18 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
                                                       {1,5}, {2,5}, {0,6}, {1,6}, {2,6}};
           vector<ReplicatedShare<Ring>> r_mask_vec = randomShareWithParty_for_trun(id_, rgen_, indices);
         
-          //生成r的每一比特共享
-          auto [r_1_every_bit, r_2_every_bit] = comute_random_r_every_bit_sharing(id_, r_mask_vec, indices);
-          //最后计算随机数r的共享和r^d的共享
+          // //生成r的每一比特共享
+          // auto [r_1_every_bit, r_2_every_bit] = comute_random_r_every_bit_sharing(id_, r_mask_vec, indices); //这一行格外耗时！
+          // //最后计算随机数r的共享和r^d的共享
 
-          for(int i = 0; i<N; i++) {
-            r_1 += r_1_every_bit[i].cosnt_mul((1ULL << i));
-            r_2 += r_2_every_bit[i].cosnt_mul((1ULL << i));
-            if(i>=FRACTION) {
-              r_1_trunted_d += r_1_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
-              r_2_trunted_d += r_2_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
-            }
-          }          
+          // for(int i = 0; i<N; i++) {
+          //   r_1 += r_1_every_bit[i].cosnt_mul((1ULL << i));
+          //   r_2 += r_2_every_bit[i].cosnt_mul((1ULL << i));
+          //   if(i>=FRACTION) {
+          //     r_1_trunted_d += r_1_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
+          //     r_2_trunted_d += r_2_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
+          //   }
+          // }          
           
           vector<ReplicatedShare<Ring>> mask_in1_vec;
           vector<ReplicatedShare<Ring>> mask_in2_vec;
@@ -1209,8 +1226,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
             mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
             mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
           }
-          // ReplicatedShare<Ring> mask_prod_dot = compute_prod_mask_dot(mask_in1_vec, mask_in2_vec);
-          mask_prod_vec.push_back(compute_prod_mask_dot(mask_in1_vec, mask_in2_vec));
+          mask_prod_vec.push_back(compute_prod_mask_dot_part1(mask_in1_vec, mask_in2_vec));
 
           //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
           //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
@@ -1224,6 +1240,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
         }
       }
     }
+    
 
     //通信得到数据
     jump_.communicate(*network_, *tpool_);
@@ -1231,7 +1248,11 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
     size_t idx = 0;
     size_t idx_trdotp = 0;
     size_t idx_relu = 0;
+    // size_t count=0;
+    // std::cout<<endl;
     for (const auto& gate : level) {
+      // std::cout<<"\r"<<gate->type<<": "<<count;
+      // count++;
       switch (gate->type) {
         case utils::GateType::kInp: {
           auto pregate = std::make_unique<PreprocInput<Ring>>();
