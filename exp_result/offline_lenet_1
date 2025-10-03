@@ -1,0 +1,26 @@
+--- Details ---
+batch_size: 1
+neural_network: "lenet"
+pid: 1
+repeat: 1
+security_param: 128
+seed: 200
+threads: 1
+
+--- Circuit ---
+Input: 446514
+Addition: 26270
+Multiplication: 0
+Subtraction: 0
+Addition with constant: 0
+Multiplication with constant: 3680
+ReLU: 15220
+MSB: 0
+Compare: 0
+Dotproduct: 0
+Dotproduct with truncation: 15230
+Permutation: 0
+Invalid: 0
+Total: 506914
+Depth: 8
+

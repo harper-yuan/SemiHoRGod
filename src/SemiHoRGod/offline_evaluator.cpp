@@ -120,7 +120,7 @@ ReplicatedShare<Ring> OfflineEvaluator::jshShare(int id, RandGenPool& rgen, int 
   result.init_zero();
   // id是当前执行这个函数的参与方i，他需要获取{0,1,2,3,4}\{i}
   int idx = 0;
-  int temp;
+  Ring temp;
   for (size_t pid1 = 0; pid1 < NUM_PARTIES; ++pid1) {
     for (size_t pid2 = pid1+1; pid2 < NUM_PARTIES; ++pid2) {
       if (pid1 == id || pid2 == id) { //他无法获取共享x_{id}这个数据
