@@ -24,3 +24,15 @@ Invalid: 0
 Total: 506914
 Depth: 8
 
+--- Repetition 1 ---
+Start evaluating 
+End evaluating 
+time: 22584243.941225 ms
+sent: 3753885600 bytes
+If save the output: 0
+
+Following is the memory: 
+--- Statistics ---
+peak_resident_set_size: 347464
+peak_virtual_memory: 432252
+

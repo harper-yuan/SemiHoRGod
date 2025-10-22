@@ -7,7 +7,7 @@
 #include "helpers.h"
 #include "ijmp.h"
 #include "online_evaluator.h"
-
+extern int global_counter = 0;
 namespace SemiHoRGod{
 OfflineEvaluator::OfflineEvaluator(int my_id,
                                    std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1,
@@ -805,8 +805,9 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot_part1(vector<Repli
 
 ReplicatedShare<Ring> OfflineEvaluator::bool_mul(ReplicatedShare<Ring> a, ReplicatedShare<Ring> b){
   ReplicatedShare<Ring> temp = a + b;
-  auto temp2 = compute_prod_mask(a, b);
-  temp -= temp2.cosnt_mul(2);
+  // auto temp2 = compute_prod_mask(a, b);
+  global_counter++;
+  // temp -= temp2.cosnt_mul(2);
   return temp;
 }
 
@@ -995,7 +996,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire_no_batch(
               r_1_trunted_d += r_1_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
               r_2_trunted_d += r_2_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
             }
-          }          
+          }
           
           vector<ReplicatedShare<Ring>> mask_in1_vec;
           vector<ReplicatedShare<Ring>> mask_in2_vec;
@@ -1207,18 +1208,18 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
                                                       {1,5}, {2,5}, {0,6}, {1,6}, {2,6}};
           vector<ReplicatedShare<Ring>> r_mask_vec = randomShareWithParty_for_trun(id_, rgen_, indices);
         
-          // //生成r的每一比特共享
-          // auto [r_1_every_bit, r_2_every_bit] = comute_random_r_every_bit_sharing(id_, r_mask_vec, indices); //这一行格外耗时！
-          // //最后计算随机数r的共享和r^d的共享
+          //生成r的每一比特共享
+          auto [r_1_every_bit, r_2_every_bit] = comute_random_r_every_bit_sharing(id_, r_mask_vec, indices); //这一行格外耗时！
+          //最后计算随机数r的共享和r^d的共享
 
-          // for(int i = 0; i<N; i++) {
-          //   r_1 += r_1_every_bit[i].cosnt_mul((1ULL << i));
-          //   r_2 += r_2_every_bit[i].cosnt_mul((1ULL << i));
-          //   if(i>=FRACTION) {
-          //     r_1_trunted_d += r_1_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
-          //     r_2_trunted_d += r_2_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
-          //   }
-          // }          
+          for(int i = 0; i<N; i++) {
+            r_1 += r_1_every_bit[i].cosnt_mul((1ULL << i));
+            r_2 += r_2_every_bit[i].cosnt_mul((1ULL << i));
+            if(i>=FRACTION) {
+              r_1_trunted_d += r_1_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
+              r_2_trunted_d += r_2_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
+            }
+          }          
           
           vector<ReplicatedShare<Ring>> mask_in1_vec;
           vector<ReplicatedShare<Ring>> mask_in2_vec;
@@ -1396,6 +1397,7 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
       }
     }
   }
+  std::cout<<"counter: "<<global_counter<<endl;
   return preproc;
 }
 

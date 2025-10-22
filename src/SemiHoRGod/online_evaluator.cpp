@@ -296,357 +296,6 @@ std::vector<Ring> OnlineEvaluator::elementwise_sum(const std::array<std::vector<
     return result;
 }
 
-std::vector<Ring> OnlineEvaluator::reconstruct(
-    const std::array<std::vector<Ring>, NUM_RSS>& recon_shares) {
-  // All vectors in recon_shares should have same size.
-  size_t num = recon_shares[0].size();
-  size_t nbytes = sizeof(Ring) * num;
-
-  if (nbytes == 0) {
-    return {};
-  }
-
-  std::vector<Ring> vres(num);
-  // std::vector<Ring> vres2(num);
-  // std::vector<Ring> result(num);
-  
-  switch (id_) {
-    case 0: { //3个数据
-      //round 1
-      vector<Ring> z_1(num);
-      vector<Ring> z_2(num);
-      jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
-      jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
-      jump_.communicate(*network_, *tpool_);
-      
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(1, 2, 3).data()); 
-      std::copy(miss_values, miss_values + num, z_1.begin());
-      const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(4, 5, 6).data()); 
-      std::copy(miss_values1, miss_values1 + num, z_2.begin());
-      for (size_t i = 0; i<num; i++) {
-        vres[i] = 0;
-        for(size_t j = 0; j<NUM_RSS; j++) {
-          vres[i] += recon_shares[j][i]; //计算所有共享的和
-        }
-        vres[i] += z_1[i] + z_2[i]; //加上传过来的和
-      }
-      jump_.reset();
-
-      //round 2
-      vector<Ring> z_3(num);
-      for (size_t i = 0; i<num; i++) {
-        z_3[i] = recon_shares[upperTriangularToArray(1, 4)][i] +
-                 recon_shares[upperTriangularToArray(1, 5)][i] + 
-                 recon_shares[upperTriangularToArray(1, 6)][i];
-      }
-      jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      vector<Ring> z_5(num);
-      for (size_t i = 0; i<num; i++) {
-        z_5[i] = recon_shares[upperTriangularToArray(2, 4)][i] +
-                 recon_shares[upperTriangularToArray(2, 5)][i] + 
-                 recon_shares[upperTriangularToArray(2, 6)][i];
-      }
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 4
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      break;
-    }
-    case 1: {
-      //round 1
-      vector<Ring> z_1(num);
-      for (size_t i = 0; i<num; i++) {
-        z_1[i] = recon_shares[upperTriangularToArray(0, 4)][i] +
-                 recon_shares[upperTriangularToArray(0, 5)][i] + 
-                 recon_shares[upperTriangularToArray(0, 6)][i];
-      }
-      jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 2
-      vector<Ring> z_3(num);
-      vector<Ring> z_4(num);
-      jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
-      jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
-      jump_.communicate(*network_, *tpool_);
-      
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 2, 3).data()); 
-      std::copy(miss_values, miss_values + num, z_3.begin());
-      const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(4, 5, 6).data()); 
-      std::copy(miss_values1, miss_values1 + num, z_4.begin());
-      for (size_t i = 0; i<num; i++) {
-        vres[i] = 0;
-        for(size_t j = 0; j<NUM_RSS; j++) {
-          vres[i] += recon_shares[j][i]; //计算所有共享的和
-        }
-        vres[i] += z_3[i] + z_4[i]; //加上传过来的和
-      }
-      jump_.reset();
-
-      //round 3
-      vector<Ring> z_5(num);
-      for (size_t i = 0; i<num; i++) {
-        z_5[i] = recon_shares[upperTriangularToArray(2, 4)][i] +
-                 recon_shares[upperTriangularToArray(2, 5)][i] + 
-                 recon_shares[upperTriangularToArray(2, 6)][i];
-      }
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 4
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-      
-      break;
-    }
-    case 2: {
-      //round 1
-      vector<Ring> z_1(num);
-      for (size_t i = 0; i<num; i++) {
-        z_1[i] = recon_shares[upperTriangularToArray(0, 4)][i] +
-                 recon_shares[upperTriangularToArray(0, 5)][i] + 
-                 recon_shares[upperTriangularToArray(0, 6)][i];
-      }
-      jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 2
-      vector<Ring> z_3(num);
-      for (size_t i = 0; i<num; i++) {
-        z_3[i] = recon_shares[upperTriangularToArray(1, 4)][i] +
-                 recon_shares[upperTriangularToArray(1, 5)][i] + 
-                 recon_shares[upperTriangularToArray(1, 6)][i];
-      }
-      jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      vector<Ring> z_5(num);
-      vector<Ring> z_6(num);
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
-      jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
-      jump_.communicate(*network_, *tpool_);
-      
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 3).data()); 
-      std::copy(miss_values, miss_values + num, z_5.begin());
-      const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(4, 5, 6).data()); 
-      std::copy(miss_values1, miss_values1 + num, z_6.begin());
-      for (size_t i = 0; i<num; i++) {
-        vres[i] = 0;
-        for(size_t j = 0; j<NUM_RSS; j++) {
-          vres[i] += recon_shares[j][i]; //计算所有共享的和
-        }
-        vres[i] += z_5[i] + z_6[i]; //加上传过来的和
-      }
-      jump_.reset();
-
-      //round 4
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
-      jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-      
-      break;
-    }
-    case 3: {
-      //round 1
-      vector<Ring> z_1(num);
-      for (size_t i = 0; i<num; i++) {
-        z_1[i] = recon_shares[upperTriangularToArray(0, 4)][i] +
-                 recon_shares[upperTriangularToArray(0, 5)][i] + 
-                 recon_shares[upperTriangularToArray(0, 6)][i];
-      }
-      jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 2
-      vector<Ring> z_3(num);
-      for (size_t i = 0; i<num; i++) {
-        z_3[i] = recon_shares[upperTriangularToArray(1, 4)][i] +
-                 recon_shares[upperTriangularToArray(1, 5)][i] + 
-                 recon_shares[upperTriangularToArray(1, 6)][i];
-      }
-      jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      vector<Ring> z_5(num);
-      for (size_t i = 0; i<num; i++) {
-        z_5[i] = recon_shares[upperTriangularToArray(2, 4)][i] +
-                 recon_shares[upperTriangularToArray(2, 5)][i] + 
-                 recon_shares[upperTriangularToArray(2, 6)][i];
-      }
-      jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 4
-      jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      jump_.reset();
-      
-      break;
-    }
-    case 4: {
-      //round 1
-      vector<Ring> z_2(num);
-      for (size_t i = 0; i<num; i++) {
-        z_2[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
-                 recon_shares[upperTriangularToArray(0, 2)][i] + 
-                 recon_shares[upperTriangularToArray(0, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 2
-      vector<Ring> z_4(num);
-      for (size_t i = 0; i<num; i++) {
-        z_4[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
-                 recon_shares[upperTriangularToArray(1, 2)][i] + 
-                 recon_shares[upperTriangularToArray(1, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      vector<Ring> z_6(num);
-      for (size_t i = 0; i<num; i++) {
-        z_6[i] = recon_shares[upperTriangularToArray(0, 2)][i] +
-                 recon_shares[upperTriangularToArray(1, 2)][i] + 
-                 recon_shares[upperTriangularToArray(2, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 4
-      jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      jump_.reset();
-
-      break;
-    }
-    case 5: {
-      //round 1
-      vector<Ring> z_2(num);
-      for (size_t i = 0; i<num; i++) {
-        z_2[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
-                 recon_shares[upperTriangularToArray(0, 2)][i] + 
-                 recon_shares[upperTriangularToArray(0, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 2
-      vector<Ring> z_4(num);
-      for (size_t i = 0; i<num; i++) {
-        z_4[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
-                 recon_shares[upperTriangularToArray(1, 2)][i] + 
-                 recon_shares[upperTriangularToArray(1, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      vector<Ring> z_6(num);
-      for (size_t i = 0; i<num; i++) {
-        z_6[i] = recon_shares[upperTriangularToArray(0, 2)][i] +
-                 recon_shares[upperTriangularToArray(1, 2)][i] + 
-                 recon_shares[upperTriangularToArray(2, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 4
-      jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      jump_.reset();
-
-      break;
-    }
-    case 6: {
-      //round 1
-      vector<Ring> z_2(num);
-      for (size_t i = 0; i<num; i++) {
-        z_2[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
-                 recon_shares[upperTriangularToArray(0, 2)][i] + 
-                 recon_shares[upperTriangularToArray(0, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 2
-      vector<Ring> z_4(num);
-      for (size_t i = 0; i<num; i++) {
-        z_4[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
-                 recon_shares[upperTriangularToArray(1, 2)][i] + 
-                 recon_shares[upperTriangularToArray(1, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 3
-      vector<Ring> z_6(num);
-      for (size_t i = 0; i<num; i++) {
-        z_6[i] = recon_shares[upperTriangularToArray(0, 2)][i] +
-                 recon_shares[upperTriangularToArray(1, 2)][i] + 
-                 recon_shares[upperTriangularToArray(2, 3)][i];
-      }
-      jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
-      jump_.communicate(*network_, *tpool_);
-      jump_.reset();
-
-      //round 4
-      jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
-      jump_.communicate(*network_, *tpool_);
-      const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
-      std::copy(miss_values, miss_values + num, vres.begin());
-      jump_.reset();
-
-      break;
-    }
-  }
-  // jump_.reset();
-  return vres;
-}
-
 // std::vector<Ring> OnlineEvaluator::reconstruct(
 //     const std::array<std::vector<Ring>, NUM_RSS>& recon_shares) {
 //   // All vectors in recon_shares should have same size.
@@ -657,65 +306,416 @@ std::vector<Ring> OnlineEvaluator::reconstruct(
 //     return {};
 //   }
 
-//   std::vector<Ring> vres1(num);
-//   std::vector<Ring> vres2(num);
-//   std::vector<Ring> result(num);
+//   std::vector<Ring> vres(num);
+//   // std::vector<Ring> vres2(num);
+//   // std::vector<Ring> result(num);
+  
+//   switch (id_) {
+//     case 0: { //3个数据
+//       //round 1
+//       vector<Ring> z_1(num);
+//       vector<Ring> z_2(num);
+//       jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
+//       jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
+//       jump_.communicate(*network_, *tpool_);
+      
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(1, 2, 3).data()); 
+//       std::copy(miss_values, miss_values + num, z_1.begin());
+//       const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(4, 5, 6).data()); 
+//       std::copy(miss_values1, miss_values1 + num, z_2.begin());
+//       for (size_t i = 0; i<num; i++) {
+//         vres[i] = 0;
+//         for(size_t j = 0; j<NUM_RSS; j++) {
+//           vres[i] += recon_shares[j][i]; //计算所有共享的和
+//         }
+//         vres[i] += z_1[i] + z_2[i]; //加上传过来的和
+//       }
+//       jump_.reset();
 
-//   for(int i = 0; i<NUM_PARTIES; i++) {
-//     int sender1 = pidFromOffset(i, 1);
-//     int sender2 = pidFromOffset(i, 2);
-//     int sender3 = pidFromOffset(i, 3);
-//     int other1 = pidFromOffset(i, 4);
-//     int other2 = pidFromOffset(i, 5);
-//     int other3 = pidFromOffset(i, 6);
-//     int receiver = i;
-//     if(id_ == sender1 | id_ == sender2 | id_ == sender3 | receiver == id_) {
-//       if(receiver == id_) {
-//         jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, nullptr);
+//       //round 2
+//       vector<Ring> z_3(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_3[i] = recon_shares[upperTriangularToArray(1, 4)][i] +
+//                  recon_shares[upperTriangularToArray(1, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(1, 6)][i];
 //       }
-//       else {
-//         auto z_1 = elementwise_sum(recon_shares, upperTriangularToArray(receiver, other1), 
-//                                                  upperTriangularToArray(receiver, other2),
-//                                                  upperTriangularToArray(receiver, other3));
-//         jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, z_1.data());
+//       jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       vector<Ring> z_5(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_5[i] = recon_shares[upperTriangularToArray(2, 4)][i] +
+//                  recon_shares[upperTriangularToArray(2, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(2, 6)][i];
 //       }
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 4
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       break;
 //     }
+//     case 1: {
+//       //round 1
+//       vector<Ring> z_1(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_1[i] = recon_shares[upperTriangularToArray(0, 4)][i] +
+//                  recon_shares[upperTriangularToArray(0, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(0, 6)][i];
+//       }
+//       jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
 
-//     sender1 = pidFromOffset(i, 4);
-//     sender2 = pidFromOffset(i, 5);
-//     sender3 = pidFromOffset(i, 6);
-//     other1 = pidFromOffset(i, 1);
-//     other2 = pidFromOffset(i, 2);
-//     other3 = pidFromOffset(i, 3);
-//     if(id_ == sender1 | id_ == sender2 | id_ == sender3 | receiver == id_) {
-//       if(receiver == id_) {
-//         jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, nullptr);
+//       //round 2
+//       vector<Ring> z_3(num);
+//       vector<Ring> z_4(num);
+//       jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
+//       jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
+//       jump_.communicate(*network_, *tpool_);
+      
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 2, 3).data()); 
+//       std::copy(miss_values, miss_values + num, z_3.begin());
+//       const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(4, 5, 6).data()); 
+//       std::copy(miss_values1, miss_values1 + num, z_4.begin());
+//       for (size_t i = 0; i<num; i++) {
+//         vres[i] = 0;
+//         for(size_t j = 0; j<NUM_RSS; j++) {
+//           vres[i] += recon_shares[j][i]; //计算所有共享的和
+//         }
+//         vres[i] += z_3[i] + z_4[i]; //加上传过来的和
 //       }
-//       else {
-//         auto z_2 = elementwise_sum(recon_shares, upperTriangularToArray(receiver, other1), 
-//                                                  upperTriangularToArray(receiver, other2),
-//                                                  upperTriangularToArray(receiver, other3));
-//         jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, z_2.data());
+//       jump_.reset();
+
+//       //round 3
+//       vector<Ring> z_5(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_5[i] = recon_shares[upperTriangularToArray(2, 4)][i] +
+//                  recon_shares[upperTriangularToArray(2, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(2, 6)][i];
 //       }
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 4
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+      
+//       break;
+//     }
+//     case 2: {
+//       //round 1
+//       vector<Ring> z_1(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_1[i] = recon_shares[upperTriangularToArray(0, 4)][i] +
+//                  recon_shares[upperTriangularToArray(0, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(0, 6)][i];
+//       }
+//       jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 2
+//       vector<Ring> z_3(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_3[i] = recon_shares[upperTriangularToArray(1, 4)][i] +
+//                  recon_shares[upperTriangularToArray(1, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(1, 6)][i];
+//       }
+//       jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       vector<Ring> z_5(num);
+//       vector<Ring> z_6(num);
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
+//       jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
+//       jump_.communicate(*network_, *tpool_);
+      
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 3).data()); 
+//       std::copy(miss_values, miss_values + num, z_5.begin());
+//       const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(4, 5, 6).data()); 
+//       std::copy(miss_values1, miss_values1 + num, z_6.begin());
+//       for (size_t i = 0; i<num; i++) {
+//         vres[i] = 0;
+//         for(size_t j = 0; j<NUM_RSS; j++) {
+//           vres[i] += recon_shares[j][i]; //计算所有共享的和
+//         }
+//         vres[i] += z_5[i] + z_6[i]; //加上传过来的和
+//       }
+//       jump_.reset();
+
+//       //round 4
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
+//       jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+      
+//       break;
+//     }
+//     case 3: {
+//       //round 1
+//       vector<Ring> z_1(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_1[i] = recon_shares[upperTriangularToArray(0, 4)][i] +
+//                  recon_shares[upperTriangularToArray(0, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(0, 6)][i];
+//       }
+//       jump_.jumpUpdate(1, 2, 3, 0, nbytes, z_1.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 2
+//       vector<Ring> z_3(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_3[i] = recon_shares[upperTriangularToArray(1, 4)][i] +
+//                  recon_shares[upperTriangularToArray(1, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(1, 6)][i];
+//       }
+//       jump_.jumpUpdate(0, 2, 3, 1, nbytes, z_3.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       vector<Ring> z_5(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_5[i] = recon_shares[upperTriangularToArray(2, 4)][i] +
+//                  recon_shares[upperTriangularToArray(2, 5)][i] + 
+//                  recon_shares[upperTriangularToArray(2, 6)][i];
+//       }
+//       jump_.jumpUpdate(0, 1, 3, 2, nbytes, z_5.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 4
+//       jump_.jumpUpdate(0, 1, 2, 3, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       jump_.reset();
+      
+//       break;
+//     }
+//     case 4: {
+//       //round 1
+//       vector<Ring> z_2(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_2[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
+//                  recon_shares[upperTriangularToArray(0, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(0, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 2
+//       vector<Ring> z_4(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_4[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
+//                  recon_shares[upperTriangularToArray(1, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(1, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       vector<Ring> z_6(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_6[i] = recon_shares[upperTriangularToArray(0, 2)][i] +
+//                  recon_shares[upperTriangularToArray(1, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(2, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 4
+//       jump_.jumpUpdate(0, 1, 2, 4, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       jump_.reset();
+
+//       break;
+//     }
+//     case 5: {
+//       //round 1
+//       vector<Ring> z_2(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_2[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
+//                  recon_shares[upperTriangularToArray(0, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(0, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 2
+//       vector<Ring> z_4(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_4[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
+//                  recon_shares[upperTriangularToArray(1, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(1, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       vector<Ring> z_6(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_6[i] = recon_shares[upperTriangularToArray(0, 2)][i] +
+//                  recon_shares[upperTriangularToArray(1, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(2, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 4
+//       jump_.jumpUpdate(0, 1, 2, 5, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       jump_.reset();
+
+//       break;
+//     }
+//     case 6: {
+//       //round 1
+//       vector<Ring> z_2(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_2[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
+//                  recon_shares[upperTriangularToArray(0, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(0, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 0, nbytes, z_2.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 2
+//       vector<Ring> z_4(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_4[i] = recon_shares[upperTriangularToArray(0, 1)][i] +
+//                  recon_shares[upperTriangularToArray(1, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(1, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 1, nbytes, z_4.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 3
+//       vector<Ring> z_6(num);
+//       for (size_t i = 0; i<num; i++) {
+//         z_6[i] = recon_shares[upperTriangularToArray(0, 2)][i] +
+//                  recon_shares[upperTriangularToArray(1, 2)][i] + 
+//                  recon_shares[upperTriangularToArray(2, 3)][i];
+//       }
+//       jump_.jumpUpdate(4, 5, 6, 2, nbytes, z_6.data());
+//       jump_.communicate(*network_, *tpool_);
+//       jump_.reset();
+
+//       //round 4
+//       jump_.jumpUpdate(0, 1, 2, 6, nbytes, vres.data());
+//       jump_.communicate(*network_, *tpool_);
+//       const auto* miss_values = reinterpret_cast<const Ring*>(jump_.getValues(0, 1, 2).data()); 
+//       std::copy(miss_values, miss_values + num, vres.begin());
+//       jump_.reset();
+
+//       break;
 //     }
 //   }
-//   jump_.communicate(*network_, *tpool_);
-
-//   //reinterpret_cast 的作用是 对指针类型进行低级别的重新解释，即将原始指针类型强制转换为另一种不相关的指针类型（这里是 const Ring*），而无需修改底层数据。
-//   const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());
-//   const auto* miss_values2 = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 4), pidFromOffset(id_, 5), pidFromOffset(id_, 6)).data());     
-//   std::copy(miss_values1, miss_values1 + num, vres1.begin());
-//   std::copy(miss_values2, miss_values2 + num, vres2.begin());
-//   for (size_t i = 0; i<num; i++) {
-//     Ring temp = 0;
-//     for(size_t j = 0; j<NUM_RSS; j++) {
-//       temp += recon_shares[j][i];
-//     }
-//     result[i] = vres1[i] + vres2[i] + temp;
-//   }
-//   jump_.reset();
-//   return result;
+//   // jump_.reset();
+//   return vres;
 // }
+
+std::vector<Ring> OnlineEvaluator::reconstruct(
+    const std::array<std::vector<Ring>, NUM_RSS>& recon_shares) {
+  // All vectors in recon_shares should have same size.
+  size_t num = recon_shares[0].size();
+  size_t nbytes = sizeof(Ring) * num;
+
+  if (nbytes == 0) {
+    return {};
+  }
+
+  std::vector<Ring> vres1(num);
+  std::vector<Ring> vres2(num);
+  std::vector<Ring> result(num);
+
+  for(int i = 0; i<NUM_PARTIES; i++) {
+    int sender1 = pidFromOffset(i, 1);
+    int sender2 = pidFromOffset(i, 2);
+    int sender3 = pidFromOffset(i, 3);
+    int other1 = pidFromOffset(i, 4);
+    int other2 = pidFromOffset(i, 5);
+    int other3 = pidFromOffset(i, 6);
+    int receiver = i;
+    if(id_ == sender1 | id_ == sender2 | id_ == sender3 | receiver == id_) {
+      if(receiver == id_) {
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, nullptr);
+      }
+      else {
+        auto z_1 = elementwise_sum(recon_shares, upperTriangularToArray(receiver, other1), 
+                                                 upperTriangularToArray(receiver, other2),
+                                                 upperTriangularToArray(receiver, other3));
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, z_1.data());
+      }
+    }
+
+    sender1 = pidFromOffset(i, 4);
+    sender2 = pidFromOffset(i, 5);
+    sender3 = pidFromOffset(i, 6);
+    other1 = pidFromOffset(i, 1);
+    other2 = pidFromOffset(i, 2);
+    other3 = pidFromOffset(i, 3);
+    if(id_ == sender1 | id_ == sender2 | id_ == sender3 | receiver == id_) {
+      if(receiver == id_) {
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, nullptr);
+      }
+      else {
+        auto z_2 = elementwise_sum(recon_shares, upperTriangularToArray(receiver, other1), 
+                                                 upperTriangularToArray(receiver, other2),
+                                                 upperTriangularToArray(receiver, other3));
+        jump_.jumpUpdate(sender1, sender2, sender3, receiver, nbytes, z_2.data());
+      }
+    }
+  }
+  jump_.communicate(*network_, *tpool_);
+
+  //reinterpret_cast 的作用是 对指针类型进行低级别的重新解释，即将原始指针类型强制转换为另一种不相关的指针类型（这里是 const Ring*），而无需修改底层数据。
+  const auto* miss_values1 = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 1), pidFromOffset(id_, 2), pidFromOffset(id_, 3)).data());
+  const auto* miss_values2 = reinterpret_cast<const Ring*>(jump_.getValues(pidFromOffset(id_, 4), pidFromOffset(id_, 5), pidFromOffset(id_, 6)).data());     
+  std::copy(miss_values1, miss_values1 + num, vres1.begin());
+  std::copy(miss_values2, miss_values2 + num, vres2.begin());
+  for (size_t i = 0; i<num; i++) {
+    Ring temp = 0;
+    for(size_t j = 0; j<NUM_RSS; j++) {
+      temp += recon_shares[j][i];
+    }
+    result[i] = vres1[i] + vres2[i] + temp;
+  }
+  jump_.reset();
+  return result;
+}
 
 void OnlineEvaluator::evaluateGatesAtDepth(size_t depth) {
   std::array<std::vector<Ring>, NUM_RSS> recon_shares;
