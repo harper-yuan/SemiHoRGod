@@ -151,7 +151,7 @@ class NetIOMP {
 
   void recv(int src, void* data, size_t len) {
     if (src != -1 && src != party) {
-      if (sent[src]) flush(src);
+      // if (sent[src]) flush(src);
       if (src < party)
         ios[src]->recv_data(data, len);
       else

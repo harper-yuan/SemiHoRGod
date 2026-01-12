@@ -22,7 +22,7 @@ namespace bdata = boost::unit_test::data;
 constexpr int TEST_DATA_MAX_VAL = 1000;
 constexpr int SECURITY_PARAM = 128;
 constexpr int seed = 200;
-constexpr int cm_threads = 1;
+constexpr int cm_threads = 25;
 
 std::vector<Ring> generateRandomPermutation(emp::PRG& prg, uint64_t permutation_length) {
   std::vector<Ring> permutation;
@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(permu_gate) {
       OfflineEvaluator offline_eval(i, std::move(network_offline), nullptr, level_circ, SECURITY_PARAM, cm_threads);
       emp::PRG prg1(&seed, 0);
       auto preproc =  offline_eval.dummy_permutation(level_circ, input_pid_map, SECURITY_PARAM, i, prg1, data_vector, permutation_vector);
-      OnlineEvaluator online_eval(i, std::move(network), std::move(preproc), level_circ, SECURITY_PARAM, 1);
+      OnlineEvaluator online_eval(i, std::move(network), std::move(preproc), level_circ, SECURITY_PARAM, 25);
       // vector<Ring> result;
       // result.push_back(1);
       // return result;

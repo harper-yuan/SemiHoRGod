@@ -1,0 +1,38 @@
+--- Details ---
+batch_size: 1
+neural_network: "fcn"
+pid: 2
+repeat: 1
+security_param: 128
+seed: 200
+threads: 1
+
+--- Circuit ---
+Input: 119066
+Addition: 266
+Multiplication: 0
+Subtraction: 0
+Addition with constant: 0
+Multiplication with constant: 0
+ReLU: 256
+MSB: 0
+Compare: 0
+Dotproduct: 0
+Dotproduct with truncation: 266
+Permutation: 0
+Invalid: 0
+Total: 119854
+Depth: 6
+
+--- Repetition 1 ---
+Start evaluating 
+End evaluating 
+time: 5757.806748 ms
+sent: 61189760 bytes
+If save the output: 0
+
+Following is the memory: 
+--- Statistics ---
+peak_resident_set_size: 118988
+peak_virtual_memory: 209388
+

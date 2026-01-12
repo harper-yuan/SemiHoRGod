@@ -347,7 +347,7 @@ We note that every machine only runs one command
 ```
 
 #### Running time and communication offline
-
+nohup ./benchmarks/offline_nn --localhost -n lenet -p 0 > ../exp_result/offline_lenet_0 &
 ```sh
 ## fcn network
 ./benchmarks/offline_nn --net-config ../net_config.json -o offline_fcn2 -n fcn -p 0

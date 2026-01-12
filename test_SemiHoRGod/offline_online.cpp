@@ -22,7 +22,7 @@ namespace bdata = boost::unit_test::data;
 constexpr int TEST_DATA_MAX_VAL = 1000;
 constexpr int SECURITY_PARAM = 128;
 constexpr int seed = 200;
-constexpr int cm_threads = 1;
+constexpr int cm_threads = 25;
 
 utils::Circuit<Ring> generateCircuit(size_t num_mult_gates) {
   utils::Circuit<Ring> circ;
@@ -68,7 +68,7 @@ BOOST_DATA_TEST_CASE(no_op_circuit,
       auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
       // auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
       return online_eval.evaluateCircuit(inputs);
     }));
   }
@@ -115,7 +115,7 @@ BOOST_DATA_TEST_CASE(add_gate,
       auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
 
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -153,7 +153,7 @@ BOOST_DATA_TEST_CASE(sub_gate,
       auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
 
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -190,7 +190,7 @@ BOOST_DATA_TEST_CASE(const_add_gate,
       auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
 
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -227,7 +227,7 @@ BOOST_DATA_TEST_CASE(const_mul_gate,
       auto preproc = offline_eval.offline_setwire(level_circ, input_pid_map, SECURITY_PARAM, i, prg); //每个i需要预处理
 
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -269,7 +269,7 @@ BOOST_DATA_TEST_CASE(mul_gate,
       // auto preproc = OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -333,7 +333,7 @@ BOOST_DATA_TEST_CASE(depth_2_circuit,
       // OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -385,7 +385,7 @@ BOOST_AUTO_TEST_CASE(dotp_gate) {
       // OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(input_map);
     }));
@@ -432,7 +432,7 @@ BOOST_DATA_TEST_CASE(kCmp_gate, bdata::xrange(2), idx) {
       // OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -480,7 +480,7 @@ BOOST_DATA_TEST_CASE(relu_gate, bdata::xrange(2), idx) {
       // OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -537,7 +537,7 @@ BOOST_AUTO_TEST_CASE(double_relu_gate) {
       // OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));
@@ -593,7 +593,7 @@ BOOST_AUTO_TEST_CASE(double_relu_gate) {
 //       // OfflineEvaluator::dummy(level_circ, input_pid_map,
 //       //                                        SECURITY_PARAM, i, prg);
 //       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-//                                   level_circ, SECURITY_PARAM, 1);
+//                                   level_circ, SECURITY_PARAM, 21);
 //       return online_eval.evaluateCircuit(input_map);
 //     }));
 //   }
@@ -659,7 +659,7 @@ BOOST_DATA_TEST_CASE(defined_depth_circuit,
       // OfflineEvaluator::dummy(level_circ, input_pid_map,
       //                                        SECURITY_PARAM, i, prg);
       OnlineEvaluator online_eval(i, std::move(network), std::move(preproc),
-                                  level_circ, SECURITY_PARAM, 1);
+                                  level_circ, SECURITY_PARAM, 21);
 
       return online_eval.evaluateCircuit(inputs);
     }));

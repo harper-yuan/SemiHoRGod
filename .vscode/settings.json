@@ -75,6 +75,10 @@
         "variant": "cpp",
         "bit": "cpp",
         "span": "cpp",
-        "span_ext": "cpp"
+        "span_ext": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp"
     }
 }

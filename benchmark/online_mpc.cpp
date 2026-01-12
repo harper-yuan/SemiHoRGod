@@ -225,7 +225,7 @@ bpo::options_description programOptions() {
     ("depth,d", bpo::value<size_t>()->required(), "Multiplicative depth of circuit.")
     ("pid,p", bpo::value<size_t>()->required(), "Party ID.")
     ("security-param", bpo::value<size_t>()->default_value(128), "Security parameter in bits.")
-    ("threads,t", bpo::value<size_t>()->default_value(6), "Number of threads (recommended 6).")
+    ("threads,t", bpo::value<size_t>()->default_value(25), "Number of threads (recommended 25).")
     ("seed", bpo::value<size_t>()->default_value(200), "Value of the random seed.")
     ("net-config", bpo::value<std::string>(), "Path to JSON file containing network details of all parties.")
     ("localhost", bpo::bool_switch(), "All parties are on same machine.")

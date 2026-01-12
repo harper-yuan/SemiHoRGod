@@ -7,7 +7,7 @@
 #include "helpers.h"
 #include "ijmp.h"
 #include "online_evaluator.h"
-extern int global_counter = 0;
+int global_counter = 0;
 namespace SemiHoRGod{
 OfflineEvaluator::OfflineEvaluator(int my_id,
                                    std::shared_ptr<io::NetIOMP<NUM_PARTIES>> network1,
@@ -805,9 +805,9 @@ ReplicatedShare<Ring> OfflineEvaluator::compute_prod_mask_dot_part1(vector<Repli
 
 ReplicatedShare<Ring> OfflineEvaluator::bool_mul(ReplicatedShare<Ring> a, ReplicatedShare<Ring> b){
   ReplicatedShare<Ring> temp = a + b;
-  // auto temp2 = compute_prod_mask(a, b);
+  auto temp2 = compute_prod_mask(a, b);
   global_counter++;
-  // temp -= temp2.cosnt_mul(2);
+  temp -= temp2.cosnt_mul(2);
   return temp;
 }
 
@@ -1092,312 +1092,459 @@ PreprocCircuit<Ring> OfflineEvaluator::offline_setwire_no_batch(
   return preproc;
 }
 
+// === 插入这两个新函数的实现 ===
+
+void OfflineEvaluator::compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, ChannelOffsets& offsets) {
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        if(i != id_ && j != id_ && k != id_) { 
+          auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+          if(n == id_ || o == id_) {
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            
+            // 使用 offsets 获取正确的偏移量
+            const auto& buffer = jump_.getValues(i, j, k);
+            size_t offset = offsets.getAndIncrement(i, j, k);
+            // 安全检查：确保 buffer 足够大
+            if (offset + sizeof(Ring) > buffer.size()) {
+                throw std::runtime_error("Buffer overflow in compute_prod_mask_part2");
+            }
+            const Ring* x_l_m = reinterpret_cast<const Ring*>(buffer.data() + offset);
+            
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = *x_l_m; 
+            mask_prod += Gamma_i_j_k_mask;
+          }
+          else if(l == id_ || m == id_) {
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = 0;
+            mask_prod += Gamma_i_j_k_mask;
+          }
+        }
+      }
+    }
+  }
+}
+
+void OfflineEvaluator::compute_prod_mask_dot_part2(ReplicatedShare<Ring>& mask_prod, ChannelOffsets& offsets) {
+  for(int i = 0; i < NUM_PARTIES; i++) {
+    for (int j = i+1; j < NUM_PARTIES; j++) {
+      for (int k = j+1; k < NUM_PARTIES; k++) {
+        if(i != id_ && j != id_ && k != id_) {
+          auto [l, m, n, o] = findRemainingNumbers_7PC(i, j, k);
+          if(n == id_ || o == id_) {
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            
+            const auto& buffer = jump_.getValues(i, j, k);
+            size_t offset = offsets.getAndIncrement(i, j, k);
+            if (offset + sizeof(Ring) > buffer.size()) {
+                throw std::runtime_error("Buffer overflow in compute_prod_mask_dot_part2");
+            }
+            const Ring* x_l_m = reinterpret_cast<const Ring*>(buffer.data() + offset);
+            
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = *x_l_m;
+            mask_prod += Gamma_i_j_k_mask;
+          }
+          else if(l == id_ || m == id_) {
+            auto Gamma_i_j_k_mask = jshShare(id_, rgen_, i, j, k);
+            Gamma_i_j_k_mask[upperTriangularToArray(l, m)] = 0;
+            mask_prod += Gamma_i_j_k_mask;
+          }
+        }
+      }
+    }
+  }
+}
+
+
+// 替换整个 offline_setwire 函数
 PreprocCircuit<Ring> OfflineEvaluator::offline_setwire(
     const utils::LevelOrderedCircuit& circ,
     const std::unordered_map<utils::wire_t, int>& input_pid_map,
     size_t security_param, int pid, emp::PRG& prg) {
   
   PreprocCircuit<Ring> preproc(circ.num_gates, circ.outputs.size());
+  jump_.reset();
   
-  std::vector<DummyShare<Ring>> wires(circ.num_gates);
+  // 使用类型别名解决 wire_t 报错
+  using utils::wire_t;
 
-  vector<ReplicatedShare<Ring>> mask_prod_vec;
+  // 定义中间状态结构体
+  struct ReluState {
+    ReplicatedShare<Ring> mask_output_alpha;
+    ReplicatedShare<Ring> mask_mu_1, mask_mu_2;
+    Ring beta_mu_1, beta_mu_2;
+    ReplicatedShare<Ring> prev_mask, mask_for_mul;
+    ReplicatedShare<Ring> mask_prod, mask_prod2;
+  };
 
-  // for truncation
-  vector<ReplicatedShare<Ring>> r_trunted_d_vec;
-  vector<ReplicatedShare<Ring>> r_vec;
+  struct CmpState {
+    ReplicatedShare<Ring> mask_output_alpha;
+    ReplicatedShare<Ring> mask_mu_1, mask_mu_2;
+    Ring beta_mu_1, beta_mu_2;
+    ReplicatedShare<Ring> prev_mask, mask_prod;
+  };
 
-  // for relu
-  vector<ReplicatedShare<Ring>> mask_output_alpha_vec;
-  vector<ReplicatedShare<Ring>> mask_mu_1_share_vec;
-  vector<ReplicatedShare<Ring>> mask_mu_2_share_vec;
-  vector<Ring> beta_mu_1_vec;
-  vector<Ring> beta_mu_2_vec;
-  vector<ReplicatedShare<Ring>> prev_mask_vec;
-  vector<ReplicatedShare<Ring>> mask_for_mul_vec;
+  struct TrdotpState {
+    ReplicatedShare<Ring> r, r_trunted_d;
+    std::vector<ReplicatedShare<Ring>> r_bits; 
+    std::array<std::array<ReplicatedShare<Ring>, N>, 17> bits_matrix; 
+    std::vector<ReplicatedShare<Ring>> A_chain[2]; 
+    std::vector<ReplicatedShare<Ring>> B_chain[6];
+    std::vector<ReplicatedShare<Ring>> C_chain[6];
+    std::vector<ReplicatedShare<Ring>> R_final[2]; 
+    ReplicatedShare<Ring> main_dot_mask;
+  };
+
+  // 随机数索引
+  std::vector<std::pair<int, int>> tr_indices = { 
+      {0,1}, {0,2}, {1,2}, {3,4}, {5,6}, {0,3}, {1,3}, {2,3}, {0,4}, 
+      {1,4}, {2,4}, {0,5}, {1,5}, {2,5}, {0,6}, {1,6}, {2,6} 
+  }; 
+
+  // 按层遍历
   for (const auto& level : circ.gates_by_level) {
-    // std::cout<<"层开始"<<endl;
     jump_.reset();
-    
-    mask_prod_vec.clear();
-    r_trunted_d_vec.clear();
-    r_vec.clear();
-    mask_output_alpha_vec.clear();
-    mask_mu_1_share_vec.clear();
-    mask_mu_2_share_vec.clear();
-    beta_mu_1_vec.clear();
-    beta_mu_2_vec.clear();
-    prev_mask_vec.clear();
-    mask_for_mul_vec.clear();
+    ChannelOffsets offsets; // 这里使用新定义的结构体
 
-    size_t count = 0;
-    // std::cout<<endl;
+    std::unordered_map<wire_t, ReplicatedShare<Ring>> mul_states;
+    std::unordered_map<wire_t, ReplicatedShare<Ring>> dot_states;
+    std::unordered_map<wire_t, ReluState> relu_states;
+    std::unordered_map<wire_t, CmpState> cmp_states;
+    std::unordered_map<wire_t, TrdotpState> trdotp_states;
+    bool has_trdotp = false;
+
+    // ================= Pass 1: 准备阶段 (Prepare) =================
     for (const auto& gate : level) {
-      // std::cout<<"\r"<<gate->type<<": "<<count;
-      // count++;
-      
-      switch (gate->type) {
-        case utils::GateType::kMul: {
-          //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-
-          mask_prod_vec.push_back(compute_prod_mask_part1(mask_in1, mask_in2));
-          break;
-        }
-        case utils::GateType::kRelu: {
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
-
-          DummyShare<Ring> mask_mu_1; //随机化mu_1
-          mask_mu_1.randomize(prg);
-          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
-          auto mask_in = preproc.gates[cmp_g->in]->mask;
-
-          mask_prod_vec.push_back(compute_prod_mask_part1(mask_mu_1_share, mask_in));
-
-          DummyShare<Ring> mask_mu_2; //随机化mu_2
-          mask_mu_2.randomize(prg);
-          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
-
-          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
-          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
-
-          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
-          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
-          
-          ReplicatedShare<Ring> mask_for_mul = randomShareWithParty(id_, rgen_); //随机化mu_2
-
-          //前面做了一次乘法，得到的结果是(x-y)大于0或者小于0，分别代表1和0，这里再做一次乘法，输入(x-y)，则输出relu的结果
-          mask_prod_vec.push_back(compute_prod_mask_part1(mask_output_alpha, mask_in));
-
-          mask_output_alpha_vec.push_back(mask_output_alpha);
-          mask_mu_1_share_vec.push_back(mask_mu_1_share);
-          mask_mu_2_share_vec.push_back(mask_mu_2_share);
-          beta_mu_1_vec.push_back(beta_mu_1);
-          beta_mu_2_vec.push_back(beta_mu_2);
-          prev_mask_vec.push_back(prev_mask);
-          mask_for_mul_vec.push_back(mask_for_mul);
-          break;
-        }
-
-        case utils::GateType::kDotprod: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-
-          vector<ReplicatedShare<Ring>> mask_in1_vec;
-          vector<ReplicatedShare<Ring>> mask_in2_vec;
-          for (size_t i = 0; i < g->in1.size(); i++) {
-            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
-            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
-          }
-          mask_prod_vec.push_back(compute_prod_mask_dot_part1(mask_in1_vec, mask_in2_vec));
-          break;
-        }
-
-        case utils::GateType::kTrdotp: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-
-          ReplicatedShare<Ring> r_1, r_2;
-          ReplicatedShare<Ring> r_1_trunted_d, r_2_trunted_d;
-          r_1.init_zero(); r_2.init_zero();
-          r_1_trunted_d.init_zero(); r_2_trunted_d.init_zero();
-          //首先生成r1,r2,r3的共享，按照表格的内容生成
-          std::vector<std::pair<int, int>> indices = { {0,1}, {0,2}, {1,2}, {3,4}, {5,6}, {0,3},
-                                                      {1,3}, {2,3}, {0,4}, {1,4}, {2,4}, {0,5},
-                                                      {1,5}, {2,5}, {0,6}, {1,6}, {2,6}};
-          vector<ReplicatedShare<Ring>> r_mask_vec = randomShareWithParty_for_trun(id_, rgen_, indices);
-        
-          //生成r的每一比特共享
-          auto [r_1_every_bit, r_2_every_bit] = comute_random_r_every_bit_sharing(id_, r_mask_vec, indices); //这一行格外耗时！
-          //最后计算随机数r的共享和r^d的共享
-
-          for(int i = 0; i<N; i++) {
-            r_1 += r_1_every_bit[i].cosnt_mul((1ULL << i));
-            r_2 += r_2_every_bit[i].cosnt_mul((1ULL << i));
-            if(i>=FRACTION) {
-              r_1_trunted_d += r_1_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
-              r_2_trunted_d += r_2_every_bit[i].cosnt_mul((1ULL << (i-FRACTION)));
-            }
-          }          
-          
-          vector<ReplicatedShare<Ring>> mask_in1_vec;
-          vector<ReplicatedShare<Ring>> mask_in2_vec;
-          for (size_t i = 0; i < g->in1.size(); i++) {
-            mask_in1_vec.push_back(preproc.gates[g->in1[i]]->mask);
-            mask_in2_vec.push_back(preproc.gates[g->in2[i]]->mask);
-          }
-          mask_prod_vec.push_back(compute_prod_mask_dot_part1(mask_in1_vec, mask_in2_vec));
-
-          //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
-          //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
-          //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
-          ReplicatedShare<Ring> r = r_1 + r_2;
-          ReplicatedShare<Ring> r_trunted_d = r_1_trunted_d + r_2_trunted_d;
-
-          r_trunted_d_vec.push_back(r_trunted_d);
-          r_vec.push_back(r);
-          break;
-        }
-      }
-    }
-    
-
-    //通信得到数据
-    jump_.communicate(*network_, *tpool_);
-
-    size_t idx = 0;
-    size_t idx_trdotp = 0;
-    size_t idx_relu = 0;
-    // size_t count=0;
-    // std::cout<<endl;
-    for (const auto& gate : level) {
-      // std::cout<<"\r"<<gate->type<<": "<<count;
-      // count++;
       switch (gate->type) {
         case utils::GateType::kInp: {
           auto pregate = std::make_unique<PreprocInput<Ring>>();
-          auto pid = input_pid_map.at(gate->out); //input pid
-          pregate->pid = pid;
-          if (pid == id_) {
-            randomShareWithParty(id_, rgen_, pregate->mask,
-                                 pregate->mask_value); //如果是数据的拥有者，他是可以获得α的累计值的，以此计算β
-          } 
-          else {
-            randomShareWithParty(id_, pid, rgen_, pregate->mask);
+          auto input_pid = input_pid_map.at(gate->out);
+          pregate->pid = input_pid;
+          if (pid == input_pid) {
+            randomShareWithParty(id_, rgen_, pregate->mask, pregate->mask_value);
+          } else {
+            randomShareWithParty(id_, input_pid, rgen_, pregate->mask);
           }
           preproc.gates[gate->out] = std::move(pregate);
           break;
         }
-
-        case utils::GateType::kAdd: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 + mask_in2);
-          break;
-        }
-
-        case utils::GateType::kSub: {
-          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          const auto& mask_in1 = preproc.gates[g->in1]->mask;
-          const auto& mask_in2 = preproc.gates[g->in2]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in1 - mask_in2);
-          break;
-        }
-
-        case utils::GateType::kConstAdd: {
-          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-          // const auto& mask_in = preproc.gates[g->in]->mask;
-          preproc.gates[gate->out] =
-              std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);//mask_in的值不会改变
-          break;
-        }
-
-        case utils::GateType::kConstMul: {
-          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
-          const auto& mask_in = preproc.gates[g->in]->mask;
-          // wires[g->out] = wires[g->in] * g->cval;
-          preproc.gates[g->out] =
-              std::make_unique<PreprocGate<Ring>>(mask_in*g->cval);
-          break;
-        }
-        
+        // 本地门（Add, Sub等）推迟到 Pass 3 处理
         case utils::GateType::kMul: {
-          //目的有2个，得到α_xy = α_x * α_y。另一个就是随机生成α_z作为乘法结果的alpha部分
           const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
-          compute_prod_mask_part2(mask_prod_vec[idx], idx);
-          preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(
-              randomShareWithParty(id_, rgen_), mask_prod_vec[idx]);
-          idx++;
+          mul_states[gate->out] = compute_prod_mask_part1(preproc.gates[g->in1]->mask, preproc.gates[g->in2]->mask);
           break;
         }
-
         case utils::GateType::kDotprod: {
           const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-
-          compute_prod_mask_dot_part2(mask_prod_vec[idx], idx);
-
-          preproc.gates[g->out] = std::make_unique<PreprocDotpGate<Ring>>(
-              randomShareWithParty(id_, rgen_), mask_prod_vec[idx]);
-          idx++;
+          std::vector<ReplicatedShare<Ring>> in1, in2;
+          for(size_t i=0; i<g->in1.size(); ++i) {
+             in1.push_back(preproc.gates[g->in1[i]]->mask);
+             in2.push_back(preproc.gates[g->in2[i]]->mask);
+          }
+          dot_states[gate->out] = compute_prod_mask_dot_part1(in1, in2);
           break;
         }
-
-        case utils::GateType::kTrdotp: {
-          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
-          compute_prod_mask_dot_part2(mask_prod_vec[idx], idx);
-          // std::cout<<"size:"<<mask_prod_vec.size()<<" gate: "<<gate->type<<": "<<idx<<endl;
-
-          //生成三个共享，一个是mask，代表[r^d]，即最终的结果r^d的[·]-sharing部分
-          //一个是mask_prod，代表[z]，即计算结果的共享[·]-sharing
-          //最后一个是mask_d，代表随机数[r]的共享[·]-sharing
-          preproc.gates[g->out] = std::make_unique<PreprocTrDotpGate<Ring>>( 
-              r_trunted_d_vec[idx_trdotp], mask_prod_vec[idx], r_vec[idx_trdotp]);
-          idx++;
-          break;
-        }
-
-        //要判断一个数x的正负
-        case utils::GateType::kMsb: {
-          break;
-        }
-
         case utils::GateType::kRelu: {
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-
-          compute_prod_mask_part2(mask_prod_vec[idx], idx);
-          idx++;
-          compute_prod_mask_part2(mask_prod_vec[idx], idx);
-          idx++;
-
-          preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
-              mask_output_alpha_vec[idx_relu], mask_prod_vec[idx-2], mask_mu_1_share_vec[idx_relu], mask_mu_2_share_vec[idx_relu], 
-              beta_mu_1_vec[idx_relu], beta_mu_2_vec[idx_relu], prev_mask_vec[idx_relu], mask_prod_vec[idx-1], mask_for_mul_vec[idx_relu]); 
-              //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
-          idx_relu++;
+          const auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+          ReluState s;
+          s.mask_output_alpha = randomShareWithParty(id_, rgen_);
+          
+          DummyShare<Ring> m1; m1.randomize(prg); s.mask_mu_1 = m1.getRSS(pid);
+          DummyShare<Ring> m2; m2.randomize(prg); s.mask_mu_2 = m2.getRSS(pid);
+          s.beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + m1.secret();
+          s.beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + m2.secret();
+          
+          s.prev_mask = s.mask_output_alpha;
+          s.mask_output_alpha += s.mask_mu_2;
+          s.mask_for_mul = randomShareWithParty(id_, rgen_);
+          
+          s.mask_prod = compute_prod_mask_part1(s.mask_mu_1, preproc.gates[g->in]->mask);
+          s.mask_prod2 = compute_prod_mask_part1(s.mask_output_alpha, preproc.gates[g->in]->mask);
+          
+          relu_states[gate->out] = s;
           break;
         }
-
         case utils::GateType::kCmp: {
-          /* The generation of sharing of mu_1 and mu_2 does not require communication, only local computation
-          so it is assumed here that there is a third-party generater, and the impact on performance can be ignored */
-          const auto* cmp_g = static_cast<utils::FIn1Gate*>(gate.get()); //一个输入的门
-          auto mask_output_alpha = randomShareWithParty(id_, rgen_); //随机化输出值的α
-
-          DummyShare<Ring> mask_mu_1; //随机化mu_1
-          mask_mu_1.randomize(prg); //
-          auto mask_mu_1_share = mask_mu_1.getRSS(pid);
-          auto mask_in = preproc.gates[cmp_g->in]->mask;
-
-          auto mask_prod = compute_prod_mask(mask_mu_1_share, mask_in); //直接把关键的prod=(Σα1) x (Σα2)的共享计算出来
-
-          DummyShare<Ring> mask_mu_2; //随机化mu_2
-          mask_mu_2.randomize(prg);
-          auto mask_mu_2_share = mask_mu_2.getRSS(pid);
-
-          Ring beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_1.secret();
-          Ring beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + mask_mu_2.secret();
-
-          ReplicatedShare<Ring> prev_mask = mask_output_alpha;
-          mask_output_alpha +=  mask_mu_2_share;  //alpha提前加好，后续不用加了
-          //除此之外，还有一个重要的操作，如果(x-y)>0，那么最终需要的α已经有了，但是β无法计算，所以我们需要预先计算好最终结果的β，否则计算不了。
-
-          preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(mask_output_alpha, mask_prod,
-              mask_mu_1_share, mask_mu_2_share, beta_mu_1, beta_mu_2, prev_mask); //然后再把prod 重新share出去，这样下次做乘法，只用线性计算即可
+          const auto* g = static_cast<utils::FIn1Gate*>(gate.get());
+          CmpState s;
+          s.mask_output_alpha = randomShareWithParty(id_, rgen_);
+          
+          DummyShare<Ring> m1; m1.randomize(prg); s.mask_mu_1 = m1.getRSS(pid);
+          DummyShare<Ring> m2; m2.randomize(prg); s.mask_mu_2 = m2.getRSS(pid);
+          s.beta_mu_1 = generate_specific_bit_random(prg, BITS_BETA) + m1.secret();
+          s.beta_mu_2 = generate_specific_bit_random(prg, BITS_BETA) + m2.secret();
+          
+          s.prev_mask = s.mask_output_alpha;
+          s.mask_output_alpha += s.mask_mu_2;
+          s.mask_prod = compute_prod_mask_part1(s.mask_mu_1, preproc.gates[g->in]->mask);
+          
+          cmp_states[gate->out] = s;
           break;
         }
+        case utils::GateType::kTrdotp: {
+          has_trdotp = true;
+          const auto* g = static_cast<utils::SIMDGate*>(gate.get());
+          TrdotpState s;
+          
+          s.r_bits = randomShareWithParty_for_trun(id_, rgen_, tr_indices);
+          
+          for(int i=0; i<N; ++i) {
+             for(int j=0; j<17; ++j) {
+                Ring val;
+                int idx1 = tr_indices[j].first;
+                int idx2 = tr_indices[j].second;
+                if (id_ == idx1 || id_ == idx2) val = 0;
+                else val = s.r_bits[j][upperTriangularToArray(idx1, idx2)];
+                
+                s.bits_matrix[j][i].init_zero();
+                if (((val >> i) & 1ULL) && id_ != idx1 && id_ != idx2) {
+                    s.bits_matrix[j][i][upperTriangularToArray(idx1, idx2)] = 1;
+                }
+             }
+          }
+          
+          for(int k=0; k<2; ++k) s.A_chain[k].resize(N);
+          for(int k=0; k<6; ++k) s.B_chain[k].resize(N);
+          for(int k=0; k<6; ++k) s.C_chain[k].resize(N);
+          for(int k=0; k<2; ++k) s.R_final[k].resize(N);
 
-        default: {
-          throw std::runtime_error("Invalid gate.");
+          for(int i=0; i<N; ++i) {
+             s.A_chain[0][i] = compute_prod_mask_part1(s.bits_matrix[0][i], s.bits_matrix[1][i]);
+             s.B_chain[0][i] = compute_prod_mask_part1(s.bits_matrix[5][i], s.bits_matrix[8][i]);
+             s.C_chain[0][i] = compute_prod_mask_part1(s.bits_matrix[11][i], s.bits_matrix[14][i]);
+          }
+          
+          std::vector<ReplicatedShare<Ring>> in1, in2;
+          for(size_t i=0; i<g->in1.size(); ++i) {
+             in1.push_back(preproc.gates[g->in1[i]]->mask);
+             in2.push_back(preproc.gates[g->in2[i]]->mask);
+          }
+          s.main_dot_mask = compute_prod_mask_dot_part1(in1, in2);
+          
+          trdotp_states[gate->out] = s;
           break;
         }
+        default: break;
+      }
+    }
+
+    // 通信：第一轮
+    jump_.communicate(*network_, *tpool_);
+    
+    // ================= Pass 2: 处理阶段 (Process) =================
+    for (const auto& gate : level) {
+      if (gate->type == utils::GateType::kMul) {
+         compute_prod_mask_part2(mul_states[gate->out], offsets);
+         preproc.gates[gate->out] = std::make_unique<PreprocMultGate<Ring>>(randomShareWithParty(id_, rgen_), mul_states[gate->out]);
+      } else if (gate->type == utils::GateType::kDotprod) {
+         compute_prod_mask_dot_part2(dot_states[gate->out], offsets);
+         preproc.gates[gate->out] = std::make_unique<PreprocDotpGate<Ring>>(randomShareWithParty(id_, rgen_), dot_states[gate->out]);
+      } else if (gate->type == utils::GateType::kRelu) {
+         auto& s = relu_states[gate->out];
+         compute_prod_mask_part2(s.mask_prod, offsets);
+         compute_prod_mask_part2(s.mask_prod2, offsets);
+         preproc.gates[gate->out] = std::make_unique<PreprocReluGate<Ring>>(
+             s.mask_output_alpha, s.mask_prod, s.mask_mu_1, s.mask_mu_2, 
+             s.beta_mu_1, s.beta_mu_2, s.prev_mask, s.mask_prod2, s.mask_for_mul);
+      } else if (gate->type == utils::GateType::kCmp) {
+         auto& s = cmp_states[gate->out];
+         compute_prod_mask_part2(s.mask_prod, offsets);
+         preproc.gates[gate->out] = std::make_unique<PreprocCmpGate<Ring>>(
+             s.mask_output_alpha, s.mask_prod, s.mask_mu_1, s.mask_mu_2,
+             s.beta_mu_1, s.beta_mu_2, s.prev_mask);
+      } else if (gate->type == utils::GateType::kTrdotp) {
+         auto& s = trdotp_states[gate->out];
+         for(int i=0; i<N; ++i) {
+            compute_prod_mask_part2(s.A_chain[0][i], offsets);
+            compute_prod_mask_part2(s.B_chain[0][i], offsets);
+            compute_prod_mask_part2(s.C_chain[0][i], offsets);
+            
+            s.A_chain[0][i] = s.bits_matrix[0][i] + s.bits_matrix[1][i] - s.A_chain[0][i].cosnt_mul(2);
+            s.B_chain[0][i] = s.bits_matrix[5][i] + s.bits_matrix[8][i] - s.B_chain[0][i].cosnt_mul(2);
+            s.C_chain[0][i] = s.bits_matrix[11][i] + s.bits_matrix[14][i] - s.C_chain[0][i].cosnt_mul(2);
+         }
+         compute_prod_mask_dot_part2(s.main_dot_mask, offsets);
+      }
+    }
+
+    // 截断操作的后续轮次（流水线处理）
+    if (has_trdotp) {
+        // Round 1
+        jump_.reset(); offsets.reset();
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    s.A_chain[1][i] = compute_prod_mask_part1(s.A_chain[0][i], s.bits_matrix[2][i]);
+                    s.B_chain[1][i] = compute_prod_mask_part1(s.B_chain[0][i], s.bits_matrix[6][i]);
+                    s.C_chain[1][i] = compute_prod_mask_part1(s.C_chain[0][i], s.bits_matrix[12][i]);
+                }
+            }
+        }
+        jump_.communicate(*network_, *tpool_);
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    compute_prod_mask_part2(s.A_chain[1][i], offsets); s.A_chain[1][i] = s.A_chain[0][i] + s.bits_matrix[2][i] - s.A_chain[1][i].cosnt_mul(2);
+                    compute_prod_mask_part2(s.B_chain[1][i], offsets); s.B_chain[1][i] = s.B_chain[0][i] + s.bits_matrix[6][i] - s.B_chain[1][i].cosnt_mul(2);
+                    compute_prod_mask_part2(s.C_chain[1][i], offsets); s.C_chain[1][i] = s.C_chain[0][i] + s.bits_matrix[12][i] - s.C_chain[1][i].cosnt_mul(2);
+                }
+            }
+        }
+
+        // Round 2
+        jump_.reset(); offsets.reset();
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    s.B_chain[2][i] = compute_prod_mask_part1(s.B_chain[1][i], s.bits_matrix[9][i]);
+                    s.C_chain[2][i] = compute_prod_mask_part1(s.C_chain[1][i], s.bits_matrix[15][i]);
+                }
+            }
+        }
+        jump_.communicate(*network_, *tpool_);
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    compute_prod_mask_part2(s.B_chain[2][i], offsets); s.B_chain[2][i] = s.B_chain[1][i] + s.bits_matrix[9][i] - s.B_chain[2][i].cosnt_mul(2);
+                    compute_prod_mask_part2(s.C_chain[2][i], offsets); s.C_chain[2][i] = s.C_chain[1][i] + s.bits_matrix[15][i] - s.C_chain[2][i].cosnt_mul(2);
+                }
+            }
+        }
+
+        // Round 3
+        jump_.reset(); offsets.reset();
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    s.B_chain[3][i] = compute_prod_mask_part1(s.B_chain[2][i], s.bits_matrix[7][i]);
+                    s.C_chain[3][i] = compute_prod_mask_part1(s.C_chain[2][i], s.bits_matrix[13][i]);
+                }
+            }
+        }
+        jump_.communicate(*network_, *tpool_);
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    compute_prod_mask_part2(s.B_chain[3][i], offsets); s.B_chain[3][i] = s.B_chain[2][i] + s.bits_matrix[7][i] - s.B_chain[3][i].cosnt_mul(2);
+                    compute_prod_mask_part2(s.C_chain[3][i], offsets); s.C_chain[3][i] = s.C_chain[2][i] + s.bits_matrix[13][i] - s.C_chain[3][i].cosnt_mul(2);
+                }
+            }
+        }
+
+        // Round 4
+        jump_.reset(); offsets.reset();
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    s.B_chain[4][i] = compute_prod_mask_part1(s.B_chain[3][i], s.bits_matrix[10][i]);
+                    s.C_chain[4][i] = compute_prod_mask_part1(s.C_chain[3][i], s.bits_matrix[16][i]);
+                }
+            }
+        }
+        jump_.communicate(*network_, *tpool_);
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    compute_prod_mask_part2(s.B_chain[4][i], offsets); s.B_chain[4][i] = s.B_chain[3][i] + s.bits_matrix[10][i] - s.B_chain[4][i].cosnt_mul(2);
+                    compute_prod_mask_part2(s.C_chain[4][i], offsets); s.C_chain[4][i] = s.C_chain[3][i] + s.bits_matrix[16][i] - s.C_chain[4][i].cosnt_mul(2);
+                }
+            }
+        }
+
+        // Round 5
+        jump_.reset(); offsets.reset();
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    s.B_chain[5][i] = compute_prod_mask_part1(s.B_chain[4][i], s.bits_matrix[3][i]);
+                    s.C_chain[5][i] = compute_prod_mask_part1(s.C_chain[4][i], s.bits_matrix[4][i]);
+                }
+            }
+        }
+        jump_.communicate(*network_, *tpool_);
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    compute_prod_mask_part2(s.B_chain[5][i], offsets); s.B_chain[5][i] = s.B_chain[4][i] + s.bits_matrix[3][i] - s.B_chain[5][i].cosnt_mul(2);
+                    compute_prod_mask_part2(s.C_chain[5][i], offsets); s.C_chain[5][i] = s.C_chain[4][i] + s.bits_matrix[4][i] - s.C_chain[5][i].cosnt_mul(2);
+                }
+            }
+        }
+
+        // Round 6
+        jump_.reset(); offsets.reset();
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                for(int i=0; i<N; ++i) {
+                    s.R_final[0][i] = compute_prod_mask_part1(s.B_chain[5][i], s.A_chain[1][i]);
+                    s.R_final[1][i] = compute_prod_mask_part1(s.C_chain[5][i], s.A_chain[1][i]);
+                }
+            }
+        }
+        jump_.communicate(*network_, *tpool_);
+        for (const auto& gate : level) {
+            if (gate->type == utils::GateType::kTrdotp) {
+                auto& s = trdotp_states[gate->out];
+                s.r.init_zero();
+                s.r_trunted_d.init_zero();
+                for(int i=0; i<N; ++i) {
+                    compute_prod_mask_part2(s.R_final[0][i], offsets); s.R_final[0][i] = s.B_chain[5][i] + s.A_chain[1][i] - s.R_final[0][i].cosnt_mul(2);
+                    compute_prod_mask_part2(s.R_final[1][i], offsets); s.R_final[1][i] = s.C_chain[5][i] + s.A_chain[1][i] - s.R_final[1][i].cosnt_mul(2);
+                    
+                    auto r_sum = s.R_final[0][i] + s.R_final[1][i];
+                    s.r += r_sum.cosnt_mul(1ULL << i);
+                    if (i >= FRACTION) {
+                        s.r_trunted_d += r_sum.cosnt_mul(1ULL << (i - FRACTION));
+                    }
+                }
+                preproc.gates[gate->out] = std::make_unique<PreprocTrDotpGate<Ring>>(
+                    s.r_trunted_d, s.main_dot_mask, s.r);
+            }
+        }
+        jump_.reset();
+    }
+
+    // ================= Pass 3: 本地计算门 (Add, Sub 等) =================
+    for (const auto& gate : level) {
+      switch (gate->type) {
+        case utils::GateType::kAdd: {
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(
+              preproc.gates[g->in1]->mask + preproc.gates[g->in2]->mask);
+          break;
+        }
+        case utils::GateType::kSub: {
+          const auto* g = static_cast<utils::FIn2Gate*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(
+              preproc.gates[g->in1]->mask - preproc.gates[g->in2]->mask);
+          break;
+        }
+        case utils::GateType::kConstAdd: {
+          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask);
+          break;
+        }
+        case utils::GateType::kConstMul: {
+          const auto* g = static_cast<utils::ConstOpGate<Ring>*>(gate.get());
+          preproc.gates[gate->out] = std::make_unique<PreprocGate<Ring>>(preproc.gates[g->in]->mask * g->cval);
+          break;
+        }
+        default: break;
       }
     }
   }
-  std::cout<<"counter: "<<global_counter<<endl;
   return preproc;
 }
 

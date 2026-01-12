@@ -5,7 +5,7 @@
 #include <NTL/matrix.h>
 #include <NTL/vector.h>
 #include <emp-tool/emp-tool.h>
-
+#include <map>
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -20,6 +20,22 @@
 #include "types.h"
 using namespace SemiHoRGod;
 namespace SemiHoRGod {
+// Helper struct for managing buffer offsets in 7PC
+struct ChannelOffsets {
+    std::map<std::tuple<int, int, int>, size_t> offsets;
+
+    size_t getAndIncrement(int i, int j, int k) {
+        auto key = std::make_tuple(i, j, k);
+        size_t off = offsets[key];
+        offsets[key] += sizeof(Ring);
+        return off;
+    }
+    
+    void reset() {
+        offsets.clear();
+    }
+};
+
 class OfflineEvaluator {
   int id_;
   int security_param_;
@@ -80,6 +96,10 @@ class OfflineEvaluator {
   ReplicatedShare<Ring> compute_prod_mask_dot(vector<ReplicatedShare<Ring>> mask_in1, vector<ReplicatedShare<Ring>> mask_in2);
   ReplicatedShare<Ring> compute_prod_mask_dot_part1(vector<ReplicatedShare<Ring>> mask_in1_vec, vector<ReplicatedShare<Ring>> mask_in2_vec);
   void compute_prod_mask_dot_part2(ReplicatedShare<Ring>& mask_prod, size_t idx);
+  // === 新增这两个声明 ===
+  void compute_prod_mask_part2(ReplicatedShare<Ring>& mask_prod, ChannelOffsets& offsets);
+  void compute_prod_mask_dot_part2(ReplicatedShare<Ring>& mask_prod, ChannelOffsets& offsets);
+  // ======================
 
   //given sharings of three random number r1, r2, r3, generating the every bit sharing of r = r1 xor r2 xor r3
   ReplicatedShare<Ring> bool_mul(ReplicatedShare<Ring> a, ReplicatedShare<Ring> b);
