@@ -1,11 +1,11 @@
 --- Details ---
 batch_size: 1
 neural_network: "lenet"
-pid: 5
+pid: 6
 repeat: 1
 security_param: 128
 seed: 200
-threads: 1
+threads: 25
 
 --- Circuit ---
 Input: 446514
@@ -24,3 +24,17 @@ Invalid: 0
 Total: 506914
 Depth: 8
 
+--- Repetition 1 ---
+Start evaluating 
+End evaluating 
+time: 239100.77784 ms
+sent: 29760 bytes
+If save the output: 1
+Saved data in offline_lenet_local
+
+Following is the memory: 
+--- Statistics ---
+peak_resident_set_size: 5305716
+peak_virtual_memory: 6074448
+
+Saved data in offline_lenet_local

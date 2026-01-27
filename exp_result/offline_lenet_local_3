@@ -5,7 +5,7 @@ pid: 3
 repeat: 1
 security_param: 128
 seed: 200
-threads: 1
+threads: 25
 
 --- Circuit ---
 Input: 446514
@@ -24,3 +24,17 @@ Invalid: 0
 Total: 506914
 Depth: 8
 
+--- Repetition 1 ---
+Start evaluating 
+End evaluating 
+time: 239097.644969 ms
+sent: 3003114432 bytes
+If save the output: 1
+Saved data in offline_lenet_local
+
+Following is the memory: 
+--- Statistics ---
+peak_resident_set_size: 5263144
+peak_virtual_memory: 6339752
+
+Saved data in offline_lenet_local
